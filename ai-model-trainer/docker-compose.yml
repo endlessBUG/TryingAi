@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  ai-model-trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-model-trainer
+    ports:
+      - "8080:8080"
+    volumes:
+      # 数据持久化
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # ai-toolkit挂载（需要先在宿主机安装）
+      - ./ai-toolkit:/app/ai-toolkit
+    environment:
+      # JVM配置
+      - JAVA_OPTS=-Xmx4g -Xms1g
+      # 应用配置
+      - TRAINER_AI_TOOLKIT_PATH=/app/ai-toolkit
+      - TRAINER_PYTHON_PATH=python3
+      - TRAINER_UPLOAD_PATH=/app/data/uploads
+      - TRAINER_DATASET_PATH=/app/data/datasets
+      - TRAINER_OUTPUT_PATH=/app/data/outputs
+      - TRAINER_CONFIG_PATH=/app/data/configs
+      - TRAINER_LOG_PATH=/app/data/logs
+    # GPU支持（可选）
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/training/validate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# 如果需要GPU支持，取消下面的注释
+# 并确保安装了nvidia-docker
+# runtime: nvidia

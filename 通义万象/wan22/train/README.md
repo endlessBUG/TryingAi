@@ -1,1 +1,0 @@
-https://github.com/Wan-Video/Wan2.2/issues/301

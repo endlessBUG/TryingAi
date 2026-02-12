@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+  datasource:
+    url: jdbc:sqlite:./tmp/trainer.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+storage:
+  type: local
+
+trainer:
+  ai-toolkit-path: ./ai-toolkit
+  python-path: python
+  data-dir: ./tmp
+  upload-dir: ./tmp/uploads
+  dataset-dir: ./tmp/datasets
+  output-dir: ./tmp/outputs
+  config-dir: ./tmp/configs
+  log-dir: ./tmp/logs
+  supported-formats: jpg,jpeg,png,webp,bmp
+  max-concurrent-tasks: 2
+
+logging:
+  level:
+    com.ai.trainer: DEBUG
