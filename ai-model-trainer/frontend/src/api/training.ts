@@ -26,6 +26,16 @@ export function startTask(taskId: string): Promise<ApiResponse> {
 }
 
 /**
+ * 重新训练任务
+ */
+export function restartTask(taskId: string): Promise<ApiResponse> {
+  return request({
+    url: `/training/tasks/${taskId}/restart`,
+    method: 'post'
+  })
+}
+
+/**
  * 停止训练任务
  */
 export function stopTask(taskId: string): Promise<ApiResponse> {

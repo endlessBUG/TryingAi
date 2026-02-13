@@ -21,6 +21,7 @@ public class Trainer {
     private String path;
     private String gitUrl;
     private String pythonVersion;
+    private String condaEnvName;
     @Column(length = 20000)
     private String defaultYamlConfig;
     private LocalDateTime createdAt;

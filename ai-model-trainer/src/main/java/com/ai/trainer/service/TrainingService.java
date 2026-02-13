@@ -6,8 +6,7 @@ import com.ai.trainer.model.TaskStatus;
 import com.ai.trainer.model.Trainer;
 import com.ai.trainer.model.TrainingTask;
 import com.ai.trainer.repository.TrainerRepository;
-import com.ai.trainer.util.FileUtil;
-import com.ai.trainer.util.YamlUtil;
+import com.ai.trainer.strategy.TrainingStrategy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -15,8 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -26,6 +24,7 @@ public class TrainingService {
     private final TrainerProperties properties;
     private final TaskManagerService taskManager;
     private final TrainerRepository trainerRepo;
+    private final List<TrainingStrategy> strategies;
 
     @Async
     public void startTraining(String taskId) {
@@ -34,15 +33,16 @@ public class TrainingService {
 
         try {
             taskManager.updateTaskStatus(taskId, TaskStatus.PREPARING);
-            ensureTrainerReady(task);
-            String configPath = generateConfig(task);
-            task.setConfigPath(configPath);
 
-            String outputDir = FileUtil.generateUniqueDir(properties.getOutputDir(), task.getTaskName());
-            task.setOutputPath(outputDir);
+            Trainer trainer = ensureTrainerReady(task);
+            TrainingStrategy strategy = resolveStrategy(trainer);
+
+            log.info("使用训练策略: {}", strategy.getClass().getSimpleName());
+            strategy.ensureEnvironment(trainer);
 
             taskManager.updateTaskStatus(taskId, TaskStatus.RUNNING);
-            executeTraining(task);
+            strategy.executeTraining(task, trainer, taskManager);
+
             taskManager.updateTaskStatus(taskId, TaskStatus.COMPLETED);
         } catch (Exception e) {
             log.error("训练失败: {}", taskId, e);
@@ -54,7 +54,15 @@ public class TrainingService {
         TrainingTask task = taskManager.getTask(taskId);
         if (task == null || task.getProcessId() == null) return;
         try {
-            ProcessHandle.of(task.getProcessId()).ifPresent(ProcessHandle::destroy);
+            Trainer trainer = task.getTrainerId() != null
+                    ? trainerRepo.findById(task.getTrainerId()).orElse(null)
+                    : null;
+            if (trainer != null) {
+                TrainingStrategy strategy = resolveStrategy(trainer);
+                strategy.stopTraining(task);
+            } else {
+                ProcessHandle.of(task.getProcessId()).ifPresent(ProcessHandle::destroy);
+            }
             taskManager.cancelTask(taskId);
             log.info("已停止训练任务: {}", taskId);
         } catch (Exception e) {
@@ -62,47 +70,16 @@ public class TrainingService {
         }
     }
 
-    private String generateConfig(TrainingTask task) throws IOException {
-        Map<String, Object> config = new LinkedHashMap<>();
-        config.put("job", Map.of("name", task.getTaskName()));
-        config.put("model", Map.of("name_or_path", task.getTrainingConfig().getBaseModel()));
-
-        String configPath = properties.getConfigDir() + "/" + task.getTaskId() + ".yaml";
-        YamlUtil.writeYaml(configPath, config);
-        return configPath;
+    private TrainingStrategy resolveStrategy(Trainer trainer) {
+        return strategies.stream()
+                .filter(s -> s.supports(trainer))
+                .findFirst()
+                .orElseThrow(() -> new TrainingException("未找到匹配的训练策略: " + trainer.getName()));
     }
 
-    private void executeTraining(TrainingTask task) throws Exception {
-        String command = String.format("%s run.py --config %s",
-                properties.getPythonPath(), task.getConfigPath());
+    // === 训练器就绪检查（git clone 逻辑） ===
 
-        ProcessBuilder pb = new ProcessBuilder(command.split(" "));
-        pb.directory(new File(properties.getAiToolkitPath()));
-        pb.redirectErrorStream(true);
-
-        String logPath = properties.getLogDir() + "/training_" + task.getTaskId() + ".log";
-        task.setLogPath(logPath);
-
-        Process process = pb.start();
-        taskManager.setTaskProcessId(task.getTaskId(), process.pid());
-
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-             Writer logWriter = new FileWriter(logPath)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                logWriter.write(line + "\n");
-                logWriter.flush();
-                parseProgress(task.getTaskId(), line);
-            }
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new TrainingException("训练进程退出码: " + exitCode);
-        }
-    }
-
-    private void ensureTrainerReady(TrainingTask task) {
+    private Trainer ensureTrainerReady(TrainingTask task) {
         if (task.getTrainerId() == null) {
             throw new TrainingException("任务未关联训练器");
         }
@@ -111,12 +88,13 @@ public class TrainingService {
             throw new TrainingException("训练器不存在: " + task.getTrainerId());
         }
         if (hasValidPath(trainer.getPath())) {
-            return;
+            return trainer;
         }
         if (trainer.getGitUrl() == null || trainer.getGitUrl().isBlank()) {
             throw new TrainingException("训练器未配置路径且无 Git 地址，无法启动训练");
         }
         cloneAndUpdatePath(trainer, task);
+        return trainer;
     }
 
     private boolean hasValidPath(String path) {
@@ -171,21 +149,6 @@ public class TrainingService {
             throw e;
         } catch (Exception e) {
             throw new TrainingException("Git clone 异常: " + e.getMessage());
-        }
-    }
-
-    private void parseProgress(String taskId, String line) {
-        if (!line.contains("step")) return;
-        try {
-            // 简单解析: "Step 100/1000"
-            String[] parts = line.replaceAll(".*[Ss]tep\\s*", "").split("[/\\s]");
-            if (parts.length >= 2) {
-                int current = Integer.parseInt(parts[0].trim());
-                int total = Integer.parseInt(parts[1].trim());
-                double progress = (double) current / total * 100;
-                taskManager.updateTaskProgress(taskId, progress, current, total);
-            }
-        } catch (NumberFormatException ignored) {
         }
     }
 }

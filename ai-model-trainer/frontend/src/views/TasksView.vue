@@ -59,6 +59,7 @@
           <template #default="{ row }">
             <el-button v-if="row.status === 'PENDING'" size="small" type="primary" @click="handleStart(row.taskId)">启动</el-button>
             <el-button v-if="row.status === 'RUNNING'" size="small" type="warning" @click="handleStop(row.taskId)">停止</el-button>
+            <el-button v-if="['COMPLETED','FAILED','CANCELLED'].includes(row.status)" size="small" type="success" @click="handleRestart(row.taskId)">重新训练</el-button>
             <el-button size="small" @click="handleView(row)">详情</el-button>
             <el-button size="small" type="danger" :disabled="row.status === 'RUNNING'" @click="handleDelete(row.taskId)">删除</el-button>
           </template>
@@ -194,7 +195,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getAllTasks, createTask, startTask, stopTask, deleteTask, getTask } from '@/api/training'
+import { getAllTasks, createTask, startTask, stopTask, restartTask, deleteTask, getTask } from '@/api/training'
 import YamlEditor from '@/components/YamlEditor.vue'
 import { getDatasets } from '@/api/file'
 import { getTrainers } from '@/api/trainer'
@@ -310,6 +311,15 @@ const handleStart = async (taskId: string) => {
     ElMessage.success('任务已启动')
     await loadTasks()
   } catch (e) { console.error(e) }
+}
+
+const handleRestart = async (taskId: string) => {
+  await ElMessageBox.confirm('确定要重新训练此任务吗？', '提示', { type: 'warning' })
+  try {
+    await restartTask(taskId)
+    ElMessage.success('任务已重新启动')
+    await loadTasks()
+  } catch (e) { if (e !== 'cancel') console.error(e) }
 }
 
 const handleStop = async (taskId: string) => {

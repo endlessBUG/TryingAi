@@ -92,6 +92,20 @@ public class TaskManagerService {
         return true;
     }
 
+    public void resetTask(String taskId) {
+        TrainingTask task = taskRepo.findById(taskId).orElse(null);
+        if (task == null) return;
+        task.setStatus(TaskStatus.PENDING);
+        task.setProgress(0.0);
+        task.setCurrentStep(null);
+        task.setTotalSteps(null);
+        task.setProcessId(null);
+        task.setErrorMessage(null);
+        task.setStartedAt(null);
+        task.setCompletedAt(null);
+        taskRepo.save(task);
+    }
+
     public int getRunningTaskCount() {
         return taskRepo.findByStatus(TaskStatus.RUNNING).size();
     }

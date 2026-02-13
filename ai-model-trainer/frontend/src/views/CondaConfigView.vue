@@ -23,6 +23,16 @@
           </div>
         </el-form-item>
 
+        <el-divider content-position="left">网络配置</el-divider>
+
+        <el-form-item label="GitHub 代理">
+          <el-input v-model="form.githubProxy" placeholder="可选，用于加速 git+https://github.com 依赖下载" />
+          <div class="field-hint">
+            国内网络安装依赖时可能无法从 GitHub 克隆仓库，填写代理地址可解决。<br/>
+            例如：<code>https://ghfast.top/</code> 或 <code>https://mirror.ghproxy.com/</code>
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">状态检测</el-divider>
 
         <el-form-item label="检测结果">
@@ -58,7 +68,8 @@ const formRef = ref<FormInstance>()
 
 const form = ref({
   condaPath: '',
-  condaInitCommand: ''
+  condaInitCommand: '',
+  githubProxy: ''
 })
 
 const rules: FormRules = {
@@ -76,6 +87,7 @@ async function loadConfig() {
     const data = res.data || {}
     form.value.condaPath = data['conda.path'] || ''
     form.value.condaInitCommand = data['conda.init_command'] || ''
+    form.value.githubProxy = data['github.proxy'] || ''
   } finally {
     loading.value = false
   }
@@ -87,7 +99,8 @@ async function handleSave() {
   try {
     await saveSystemConfig({
       'conda.path': form.value.condaPath,
-      'conda.init_command': form.value.condaInitCommand
+      'conda.init_command': form.value.condaInitCommand,
+      'github.proxy': form.value.githubProxy
     })
     ElMessage.success('保存成功')
     detectResult.value = null

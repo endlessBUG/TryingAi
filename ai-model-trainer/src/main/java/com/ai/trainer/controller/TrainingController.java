@@ -65,6 +65,13 @@ public class TrainingController {
         return ResponseEntity.ok(Map.of("success", true, "message", "训练已启动"));
     }
 
+    @PostMapping("/tasks/{id}/restart")
+    public ResponseEntity<Map<String, Object>> restartTask(@PathVariable String id) {
+        taskManager.resetTask(id);
+        trainingService.startTraining(id);
+        return ResponseEntity.ok(Map.of("success", true, "message", "训练已重新启动"));
+    }
+
     @PostMapping("/tasks/{id}/stop")
     public ResponseEntity<Map<String, Object>> stopTask(@PathVariable String id) {
         trainingService.stopTraining(id);
