@@ -21,6 +21,12 @@ const router = createRouter({
           meta: { title: '数据集管理' }
         },
         {
+          path: 'prompt-generators',
+          name: 'PromptGenerators',
+          component: () => import('@/views/PromptGeneratorView.vue'),
+          meta: { title: '提示词生成器' }
+        },
+        {
           path: 'tasks',
           name: 'Tasks',
           component: () => import('@/views/TasksView.vue'),

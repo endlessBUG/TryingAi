@@ -19,6 +19,10 @@
             <el-icon><upload /></el-icon>
             <span>数据集管理</span>
           </el-menu-item>
+          <el-menu-item index="/prompt-generators">
+            <el-icon><magic-stick /></el-icon>
+            <span>提示词生成器</span>
+          </el-menu-item>
           <el-menu-item index="/tasks">
             <el-icon><list /></el-icon>
             <span>任务列表</span>
@@ -48,7 +52,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Setting, Upload, List, Cpu, Box } from '@element-plus/icons-vue'
+import { Setting, Upload, List, Cpu, Box, MagicStick } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const activeMenu = computed(() => route.path)

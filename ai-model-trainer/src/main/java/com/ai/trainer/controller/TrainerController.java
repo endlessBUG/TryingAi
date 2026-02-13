@@ -35,6 +35,7 @@ public class TrainerController {
         Trainer existing = trainerRepo.findById(id).orElse(null);
         if (existing == null) return ResponseEntity.notFound().build();
         existing.setName(trainer.getName());
+        existing.setType(trainer.getType());
         existing.setPath(trainer.getPath());
         existing.setGitUrl(trainer.getGitUrl());
         existing.setPythonVersion(trainer.getPythonVersion());

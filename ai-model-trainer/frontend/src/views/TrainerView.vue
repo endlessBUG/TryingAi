@@ -10,6 +10,11 @@
 
       <el-table :data="trainerList" v-loading="loading" stripe>
         <el-table-column prop="name" label="训练器名称" min-width="140" />
+        <el-table-column prop="type" label="类型" width="130">
+          <template #default="{ row }">
+            <el-tag size="small">{{ row.type || '-' }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="gitUrl" label="Git 地址" min-width="220" show-overflow-tooltip />
         <el-table-column label="存放地址" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
@@ -37,6 +42,11 @@
         <el-form-item label="训练器名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入训练器名称" />
         </el-form-item>
+        <el-form-item label="类型" prop="type">
+          <el-select v-model="form.type" placeholder="请选择训练器类型" style="width: 100%">
+            <el-option v-for="t in trainerTypes" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="Git 地址" prop="gitUrl">
           <el-input v-model="form.gitUrl" placeholder="例如: https://github.com/ostris/ai-toolkit.git" />
         </el-form-item>
@@ -51,9 +61,6 @@
           <YamlEditor v-model="form.defaultYamlConfig" height="420px" />
           <div class="yaml-hint">数据集路径请使用 <code>{{DATASET_PATH}}</code> 占位符</div>
         </el-form-item>
-        <el-form-item>
-          <el-button size="small" @click="loadDefaultTemplate">加载默认模板</el-button>
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -64,57 +71,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { getTrainers, createTrainer, updateTrainer, deleteTrainer } from '@/api/trainer'
 import type { Trainer } from '@/types'
 import YamlEditor from '@/components/YamlEditor.vue'
 
-const loading = ref(false)
-const trainerList = ref<Trainer[]>([])
-const dialogVisible = ref(false)
-const isEdit = ref(false)
-const editingId = ref('')
-const submitting = ref(false)
-const formRef = ref<FormInstance>()
-
-const form = ref<Trainer>({ name: '', path: '', gitUrl: '', pythonVersion: '', defaultYamlConfig: '' })
-
-const rules: FormRules = {
-  name: [{ required: true, message: '请输入训练器名称', trigger: 'blur' }],
-  gitUrl: [{ validator: (_r: any, _v: any, cb: any) => {
-    if (!form.value.gitUrl && !form.value.path) cb(new Error('Git 地址和存放地址至少填一个'))
-    else cb()
-  }, trigger: 'blur' }],
-  pythonVersion: [{ required: true, message: '请输入Python版本', trigger: 'blur' }]
-}
-
-async function loadList() {
-  loading.value = true
-  try {
-    const res = await getTrainers()
-    trainerList.value = res.data || []
-  } finally {
-    loading.value = false
-  }
-}
-
-function handleAdd() {
-  isEdit.value = false
-  editingId.value = ''
-  form.value = { name: '', path: '', gitUrl: '', pythonVersion: '', defaultYamlConfig: '' }
-  dialogVisible.value = true
-}
-
-function handleEdit(row: Trainer) {
-  isEdit.value = true
-  editingId.value = row.id || ''
-  form.value = { name: row.name, path: row.path || '', gitUrl: row.gitUrl || '', pythonVersion: row.pythonVersion, defaultYamlConfig: row.defaultYamlConfig || '' }
-  dialogVisible.value = true
-}
-
-const DEFAULT_YAML_TEMPLATE = `---
+const AI_TOOLKIT_YAML = `---
 job: extension
 config:
   name: "my_first_wan22_14b_lora_v1"
@@ -184,9 +148,106 @@ meta:
   version: '1.0'
 `
 
-function loadDefaultTemplate() {
-  form.value.defaultYamlConfig = DEFAULT_YAML_TEMPLATE
+const KOHYA_SS_YAML = `---
+sdxl_arguments:
+  sdxl: true
+model_arguments:
+  pretrained_model_name_or_path: "stabilityai/stable-diffusion-xl-base-1.0"
+training_arguments:
+  output_dir: "output"
+  output_name: "my_lora"
+  save_every_n_epochs: 1
+  max_train_epochs: 10
+  train_batch_size: 1
+  resolution: "1024,1024"
+  enable_bucket: true
+  min_bucket_reso: 256
+  max_bucket_reso: 2048
+  learning_rate: 1e-4
+  lr_scheduler: "cosine_with_restarts"
+  optimizer_type: "AdamW8bit"
+  mixed_precision: "bf16"
+  gradient_checkpointing: true
+  seed: 42
+  cache_latents: true
+  cache_text_encoder_outputs: true
+dataset_arguments:
+  train_data_dir: "{{DATASET_PATH}}"
+network_arguments:
+  network_module: "networks.lora"
+  network_dim: 32
+  network_alpha: 16
+`
+
+const loading = ref(false)
+const trainerList = ref<Trainer[]>([])
+const dialogVisible = ref(false)
+const isEdit = ref(false)
+const editingId = ref('')
+const submitting = ref(false)
+const formRef = ref<FormInstance>()
+
+const trainerTypePresets: Record<string, { label: string; gitUrl: string; pythonVersion: string; yaml: string }> = {
+  'ai-toolkit': {
+    label: 'AI Toolkit',
+    gitUrl: 'https://github.com/ostris/ai-toolkit.git',
+    pythonVersion: '3.10',
+    yaml: AI_TOOLKIT_YAML,
+  },
+  'kohya-ss': {
+    label: 'Kohya SS',
+    gitUrl: 'https://github.com/bmaltais/kohya_ss.git',
+    pythonVersion: '3.10',
+    yaml: KOHYA_SS_YAML,
+  },
 }
+
+const trainerTypes = Object.entries(trainerTypePresets).map(([value, p]) => ({ label: p.label, value }))
+
+const form = ref<Trainer>({ name: '', type: '', path: '', gitUrl: '', pythonVersion: '', defaultYamlConfig: '' })
+
+watch(() => form.value.type, (newType) => {
+  if (!newType || isEdit.value) return
+  const preset = trainerTypePresets[newType]
+  if (!preset) return
+  form.value.gitUrl = preset.gitUrl
+  form.value.pythonVersion = preset.pythonVersion
+  form.value.defaultYamlConfig = preset.yaml
+})
+
+const rules: FormRules = {
+  name: [{ required: true, message: '请输入训练器名称', trigger: 'blur' }],
+  gitUrl: [{ validator: (_r: any, _v: any, cb: any) => {
+    if (!form.value.gitUrl && !form.value.path) cb(new Error('Git 地址和存放地址至少填一个'))
+    else cb()
+  }, trigger: 'blur' }],
+  pythonVersion: [{ required: true, message: '请输入Python版本', trigger: 'blur' }]
+}
+
+async function loadList() {
+  loading.value = true
+  try {
+    const res = await getTrainers()
+    trainerList.value = res.data || []
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleAdd() {
+  isEdit.value = false
+  editingId.value = ''
+  form.value = { name: '', type: '', path: '', gitUrl: '', pythonVersion: '', defaultYamlConfig: '' }
+  dialogVisible.value = true
+}
+
+function handleEdit(row: Trainer) {
+  isEdit.value = true
+  editingId.value = row.id || ''
+  form.value = { name: row.name, type: row.type || '', path: row.path || '', gitUrl: row.gitUrl || '', pythonVersion: row.pythonVersion, defaultYamlConfig: row.defaultYamlConfig || '' }
+  dialogVisible.value = true
+}
+
 
 async function handleSubmit() {
   await formRef.value?.validate()

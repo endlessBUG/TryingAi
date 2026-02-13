@@ -15,10 +15,34 @@
 
       <!-- 任务统计 -->
       <div class="task-stats">
-        <el-statistic title="总任务" :value="tasks.length" />
-        <el-statistic title="运行中" :value="runningCount" />
-        <el-statistic title="已完成" :value="completedCount" />
-        <el-statistic title="失败" :value="failedCount" />
+        <div class="stat-card stat-total">
+          <div class="stat-icon"><el-icon :size="22"><document /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ tasks.length }}</div>
+            <div class="stat-label">总任务</div>
+          </div>
+        </div>
+        <div class="stat-card stat-running">
+          <div class="stat-icon"><el-icon :size="22"><refresh /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ runningCount }}</div>
+            <div class="stat-label">运行中</div>
+          </div>
+        </div>
+        <div class="stat-card stat-completed">
+          <div class="stat-icon"><el-icon :size="22"><circle-check /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ completedCount }}</div>
+            <div class="stat-label">已完成</div>
+          </div>
+        </div>
+        <div class="stat-card stat-failed">
+          <div class="stat-icon"><el-icon :size="22"><circle-close /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ failedCount }}</div>
+            <div class="stat-label">失败</div>
+          </div>
+        </div>
       </div>
 
       <!-- 任务列表 -->
@@ -194,7 +218,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Document, Refresh, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { getAllTasks, createTask, startTask, stopTask, restartTask, deleteTask, getTask } from '@/api/training'
 import YamlEditor from '@/components/YamlEditor.vue'
 import { getDatasets } from '@/api/file'
@@ -377,9 +401,80 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
   align-items: center;
 }
 .task-stats {
-  display: flex;
-  gap: 40px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
   margin-bottom: 20px;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  transition: transform 0.2s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+}
+.stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.stat-label {
+  font-size: 13px;
+  color: #909399;
+  margin-top: 2px;
+}
+.stat-total {
+  background: #f0f5ff;
+}
+.stat-total .stat-icon {
+  background: #d6e4ff;
+  color: #409eff;
+}
+.stat-total .stat-value {
+  color: #409eff;
+}
+.stat-running {
+  background: #fff7e6;
+}
+.stat-running .stat-icon {
+  background: #ffe7ba;
+  color: #e6a23c;
+}
+.stat-running .stat-value {
+  color: #e6a23c;
+}
+.stat-completed {
+  background: #f0f9eb;
+}
+.stat-completed .stat-icon {
+  background: #d9f0c7;
+  color: #67c23a;
+}
+.stat-completed .stat-value {
+  color: #67c23a;
+}
+.stat-failed {
+  background: #fef0f0;
+}
+.stat-failed .stat-icon {
+  background: #fde2e2;
+  color: #f56c6c;
+}
+.stat-failed .stat-value {
+  color: #f56c6c;
 }
 .step-info {
   font-size: 12px;

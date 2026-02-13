@@ -123,10 +123,29 @@ export interface TaskListResponse {
 export interface Trainer {
   id?: string
   name: string
+  type?: string
   path?: string
   gitUrl?: string
   pythonVersion: string
   defaultYamlConfig?: string
+  createdAt?: string
+}
+
+// 生成器类型
+export enum GeneratorType {
+  LOCAL_MODEL = 'LOCAL_MODEL',
+  REMOTE_API = 'REMOTE_API'
+}
+
+// 提示词生成器
+export interface PromptGenerator {
+  id?: string
+  name: string
+  type: GeneratorType
+  baseUrl: string
+  modelName: string
+  systemPrompt?: string
+  enabled?: boolean
   createdAt?: string
 }
 

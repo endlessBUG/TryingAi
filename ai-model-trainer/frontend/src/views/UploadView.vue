@@ -56,13 +56,6 @@
         </template>
       </el-upload>
 
-      <div class="upload-options">
-        <el-checkbox v-model="generatePrompts">自动生成提示词</el-checkbox>
-        <el-checkbox v-model="useAiGeneration" :disabled="!generatePrompts">
-          使用AI生成（实验性）
-        </el-checkbox>
-      </div>
-
       <div v-if="uploading" class="upload-progress">
         <el-progress :percentage="uploadProgress" :status="uploadStatus" />
       </div>
@@ -80,7 +73,7 @@
       <div v-if="currentDataset" class="detail-header">
         <el-tag type="success">{{ currentDataset.imageCount }} 张图片</el-tag>
         <div>
-          <el-button size="small" @click="handleRegeneratePrompts">重新生成提示词</el-button>
+          <el-button size="small" @click="showGenerateDialog">生成提示词</el-button>
           <el-button size="small" type="primary" @click="handleSavePrompts">保存提示词</el-button>
         </div>
       </div>
@@ -115,6 +108,46 @@
         <el-empty v-if="!detailLoading && currentImages.length === 0" description="暂无图片" />
       </div>
     </el-drawer>
+
+    <!-- 选择生成器对话框 -->
+    <el-dialog v-model="generateDialogVisible" title="选择提示词生成器" width="480px">
+      <el-alert
+        v-if="generatorList.length === 0"
+        title="暂无可用的生成器，请先到「提示词生成器」页面添加配置"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+      <el-form label-width="80px">
+        <el-form-item label="生成器">
+          <el-select v-model="selectedGeneratorId" placeholder="请选择生成器" style="width: 100%">
+            <el-option
+              v-for="g in enabledGenerators"
+              :key="g.id"
+              :label="g.name"
+              :value="g.id"
+            >
+              <span>{{ g.name }}</span>
+              <el-tag size="small" style="margin-left: 8px" :type="g.type === 'LOCAL_MODEL' ? 'success' : 'primary'">
+                {{ g.type === 'LOCAL_MODEL' ? '本地' : '远程' }}
+              </el-tag>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="generateDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="generating"
+          :disabled="!selectedGeneratorId"
+          @click="handleRegeneratePrompts"
+        >
+          开始生成
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -127,7 +160,8 @@ import {
   getDatasets, deleteDataset, uploadImageArchive,
   getDatasetDetail, updatePrompts, regeneratePrompts
 } from '@/api/file'
-import type { Dataset, ImagePrompt } from '@/types'
+import { getPromptGenerators } from '@/api/promptGenerator'
+import type { Dataset, ImagePrompt, PromptGenerator } from '@/types'
 import { useTaskStore } from '@/stores/task'
 
 const router = useRouter()
@@ -144,14 +178,22 @@ const selectedFile = ref<File | null>(null)
 const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadStatus = ref<'' | 'success' | 'exception'>('')
-const generatePrompts = ref(true)
-const useAiGeneration = ref(false)
 
 // 详情相关
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const currentDataset = ref<Dataset | null>(null)
 const currentImages = ref<ImagePrompt[]>([])
+
+// 生成器相关
+const generateDialogVisible = ref(false)
+const generatorList = ref<PromptGenerator[]>([])
+const selectedGeneratorId = ref('')
+const generating = ref(false)
+
+const enabledGenerators = computed(() =>
+  generatorList.value.filter(g => g.enabled !== false)
+)
 
 const loadDatasets = async () => {
   loading.value = true
@@ -196,9 +238,7 @@ const handleUpload = async () => {
   }, 500)
 
   try {
-    const response = await uploadImageArchive(
-      selectedFile.value, generatePrompts.value, useAiGeneration.value
-    )
+    const response = await uploadImageArchive(selectedFile.value)
     clearInterval(timer)
     uploadProgress.value = 100
     uploadStatus.value = 'success'
@@ -260,20 +300,35 @@ const handleSavePrompts = async () => {
   }
 }
 
-const handleRegeneratePrompts = async () => {
-  await ElMessageBox.confirm('确定要重新生成所有提示词吗？', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
+const showGenerateDialog = async () => {
+  await loadGenerators()
+  selectedGeneratorId.value = ''
+  generateDialogVisible.value = true
+}
+
+const loadGenerators = async () => {
   try {
-    const res = await regeneratePrompts(currentImages.value, useAiGeneration.value)
+    const res = await getPromptGenerators()
+    generatorList.value = res.data || []
+  } catch {
+    generatorList.value = []
+  }
+}
+
+const handleRegeneratePrompts = async () => {
+  if (!selectedGeneratorId.value) return
+  generating.value = true
+  try {
+    const res = await regeneratePrompts(currentImages.value, selectedGeneratorId.value)
     if (res.data?.images) {
       currentImages.value = res.data.images
-      ElMessage.success('提示词重新生成成功')
+      ElMessage.success('提示词生成成功')
     }
+    generateDialogVisible.value = false
   } catch (e) {
-    if (e !== 'cancel') console.error(e)
+    console.error(e)
+  } finally {
+    generating.value = false
   }
 }
 
@@ -312,11 +367,6 @@ onMounted(loadDatasets)
 }
 .upload-area {
   width: 100%;
-}
-.upload-options {
-  margin-top: 16px;
-  display: flex;
-  gap: 20px;
 }
 .upload-progress {
   margin-top: 16px;

@@ -27,13 +27,12 @@ import java.util.*;
 public class FileUploadService {
 
     private final TrainerProperties properties;
-    private final PromptGeneratorService promptService;
     private final DatasetRepository datasetRepo;
     private final ImagePromptRepository imagePromptRepo;
     private final FileStorageService storageService;
 
     @Transactional
-    public Dataset uploadAndExtract(MultipartFile file, boolean generatePrompts, boolean useAi) throws IOException {
+    public Dataset uploadAndExtract(MultipartFile file) throws IOException {
         String uploadDir = storageService.createDir(properties.getUploadDir(), "upload");
         File uploadedFile = saveUploadedFile(file, uploadDir);
 
@@ -43,11 +42,6 @@ public class FileUploadService {
         List<File> imageFiles = FileUtil.filterImageFiles(extracted, properties.getSupportedFormatArray());
         String datasetId = UUID.randomUUID().toString();
         List<ImagePrompt> images = buildImagePrompts(imageFiles, datasetId);
-
-        if (generatePrompts) {
-            promptService.generatePrompts(images);
-            promptService.savePromptFiles(images);
-        }
 
         Dataset dataset = buildDataset(datasetId, file.getOriginalFilename(), datasetDir, images.size());
         datasetRepo.save(dataset);

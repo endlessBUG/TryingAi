@@ -21,15 +21,9 @@ export function deleteDataset(id: string): Promise<ApiResponse> {
 /**
  * 上传图片压缩包（新增数据集）
  */
-export function uploadImageArchive(
-  file: File,
-  generatePrompts: boolean = true,
-  useAiGeneration: boolean = false
-): Promise<UploadResponse> {
+export function uploadImageArchive(file: File): Promise<UploadResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  formData.append('generatePrompts', String(generatePrompts))
-  formData.append('useAiGeneration', String(useAiGeneration))
 
   return request({
     url: '/files/upload',
@@ -55,16 +49,17 @@ export function updatePrompts(prompts: ImagePrompt[]): Promise<ApiResponse> {
 }
 
 /**
- * 重新生成提示词
+ * 使用指定生成器生成提示词
  */
 export function regeneratePrompts(
   prompts: ImagePrompt[],
-  useAiGeneration: boolean = false
+  generatorId: string
 ): Promise<ApiResponse<{ images: ImagePrompt[] }>> {
   return request({
     url: '/files/prompts/regenerate',
     method: 'post',
-    params: { useAiGeneration },
-    data: prompts
+    params: { generatorId },
+    data: prompts,
+    timeout: 600000
   })
 }

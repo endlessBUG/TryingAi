@@ -18,6 +18,7 @@ public class Trainer {
     @Id
     private String id;
     private String name;
+    private String type;
     private String path;
     private String gitUrl;
     private String pythonVersion;

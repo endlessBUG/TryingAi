@@ -1,0 +1,235 @@
+<template>
+  <div class="generator-view">
+    <el-card>
+      <template #header>
+        <div class="card-header">
+          <span>提示词生成器</span>
+          <el-button type="primary" @click="handleAdd">新增生成器</el-button>
+        </div>
+      </template>
+
+      <el-table :data="generatorList" v-loading="loading" stripe>
+        <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column label="类型" width="130">
+          <template #default="{ row }">
+            <el-tag :type="row.type === 'LOCAL_MODEL' ? 'success' : 'primary'" size="small">
+              {{ row.type === 'LOCAL_MODEL' ? '本地模型' : '远程API' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="baseUrl" label="服务地址" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="modelName" label="模型名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+              {{ row.enabled ? '启用' : '禁用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="success" :loading="testingId === row.id" @click="handleTest(row)">测试</el-button>
+            <el-button size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-popconfirm title="确定删除该生成器吗？" @confirm="handleDelete(row.id)">
+              <template #reference>
+                <el-button size="small" type="danger">删除</el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 测试结果 -->
+      <el-alert
+        v-if="testResult !== null"
+        :title="testResult.success ? '连接成功' : '连接失败'"
+        :type="testResult.success ? 'success' : 'error'"
+        :closable="true"
+        show-icon
+        style="margin-top: 16px"
+        @close="testResult = null"
+      >
+        <div class="test-result-content">{{ testResult.message }}</div>
+      </el-alert>
+    </el-card>
+
+    <!-- 新增/编辑对话框 -->
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑生成器' : '新增生成器'" width="620px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="form.name" placeholder="例如：CogVLM 本地模型" />
+        </el-form-item>
+        <el-form-item label="类型" prop="type">
+          <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
+            <el-option label="本地模型" value="LOCAL_MODEL" />
+            <el-option label="远程API" value="REMOTE_API" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="服务地址" prop="baseUrl">
+          <el-input v-model="form.baseUrl" placeholder="例如：http://localhost:8000" />
+          <div class="field-hint">兼容 OpenAI Vision API 格式，将自动拼接 /v1/chat/completions</div>
+        </el-form-item>
+        <el-form-item label="模型名称" prop="modelName">
+          <el-input v-model="form.modelName" placeholder="例如：cogvlm2-llama3-chat-19B" />
+        </el-form-item>
+        <el-form-item label="系统提示词">
+          <el-input
+            v-model="form.systemPrompt"
+            type="textarea"
+            :rows="4"
+            placeholder="告诉模型如何描述图片，留空使用默认提示词"
+          />
+          <div class="field-hint">
+            默认：Describe this image in detail for AI training. Output comma-separated English tags.
+          </div>
+        </el-form-item>
+        <el-form-item label="启用">
+          <el-switch v-model="form.enabled" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import {
+  getPromptGenerators, createPromptGenerator,
+  updatePromptGenerator, deletePromptGenerator, testPromptGenerator
+} from '@/api/promptGenerator'
+import type { PromptGenerator } from '@/types'
+import { GeneratorType } from '@/types'
+
+const loading = ref(false)
+const generatorList = ref<PromptGenerator[]>([])
+const dialogVisible = ref(false)
+const isEdit = ref(false)
+const editingId = ref('')
+const submitting = ref(false)
+const formRef = ref<FormInstance>()
+const testingId = ref('')
+const testResult = ref<{ success: boolean; message: string } | null>(null)
+
+const defaultForm = (): PromptGenerator => ({
+  name: '',
+  type: GeneratorType.LOCAL_MODEL,
+  baseUrl: '',
+  modelName: '',
+  systemPrompt: '',
+  enabled: true
+})
+
+const form = ref<PromptGenerator>(defaultForm())
+
+const rules: FormRules = {
+  name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
+  baseUrl: [{ required: true, message: '请输入服务地址', trigger: 'blur' }],
+  modelName: [{ required: true, message: '请输入模型名称', trigger: 'blur' }]
+}
+
+async function loadList() {
+  loading.value = true
+  try {
+    const res = await getPromptGenerators()
+    generatorList.value = res.data || []
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleAdd() {
+  isEdit.value = false
+  editingId.value = ''
+  form.value = defaultForm()
+  dialogVisible.value = true
+}
+
+function handleEdit(row: PromptGenerator) {
+  isEdit.value = true
+  editingId.value = row.id || ''
+  form.value = {
+    name: row.name,
+    type: row.type,
+    baseUrl: row.baseUrl,
+    modelName: row.modelName,
+    systemPrompt: row.systemPrompt || '',
+    enabled: row.enabled
+  }
+  dialogVisible.value = true
+}
+
+async function handleSubmit() {
+  await formRef.value?.validate()
+  submitting.value = true
+  try {
+    if (isEdit.value) {
+      await updatePromptGenerator(editingId.value, form.value)
+      ElMessage.success('更新成功')
+    } else {
+      await createPromptGenerator(form.value)
+      ElMessage.success('新增成功')
+    }
+    dialogVisible.value = false
+    await loadList()
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function handleDelete(id: string) {
+  await deletePromptGenerator(id)
+  ElMessage.success('删除成功')
+  await loadList()
+}
+
+async function handleTest(row: PromptGenerator) {
+  if (!row.id) return
+  testingId.value = row.id
+  testResult.value = null
+  try {
+    const res = await testPromptGenerator(row.id)
+    if (res.success) {
+      testResult.value = { success: true, message: '模型回复: ' + (res.data || '(空)') }
+    } else {
+      testResult.value = { success: false, message: res.message || '连接失败' }
+    }
+  } catch (e: any) {
+    testResult.value = { success: false, message: e.message || '请求异常' }
+  } finally {
+    testingId.value = ''
+  }
+}
+
+onMounted(loadList)
+</script>
+
+<style scoped>
+.generator-view {
+  padding: 20px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+.test-result-content {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+</style>

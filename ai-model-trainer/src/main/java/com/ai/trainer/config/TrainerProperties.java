@@ -10,12 +10,12 @@ import org.springframework.stereotype.Component;
 public class TrainerProperties {
     private String aiToolkitPath = "./ai-toolkit";
     private String pythonPath = "python";
-    private String dataDir = "./data";
-    private String uploadDir = "./data/uploads";
-    private String datasetDir = "./data/datasets";
-    private String outputDir = "./data/outputs";
-    private String configDir = "./data/configs";
-    private String logDir = "./data/logs";
+    private String dataDir = System.getProperty("user.home") + "/tryingai";
+    private String uploadDir = System.getProperty("user.home") + "/tryingai/uploads";
+    private String datasetDir = System.getProperty("user.home") + "/tryingai/datasets";
+    private String outputDir = System.getProperty("user.home") + "/tryingai/outputs";
+    private String configDir = System.getProperty("user.home") + "/tryingai/configs";
+    private String logDir = System.getProperty("user.home") + "/tryingai/logs";
     private String supportedFormats = "jpg,jpeg,png,webp,bmp";
     private int maxConcurrentTasks = 2;
 

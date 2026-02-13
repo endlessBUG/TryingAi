@@ -54,11 +54,9 @@ public class FileController {
 
     @PostMapping("/upload")
     public ResponseEntity<Map<String, Object>> upload(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "generatePrompts", defaultValue = "true") boolean generatePrompts,
-            @RequestParam(value = "useAiGeneration", defaultValue = "false") boolean useAi
+            @RequestParam("file") MultipartFile file
     ) throws Exception {
-        Dataset dataset = fileUploadService.uploadAndExtract(file, generatePrompts, useAi);
+        Dataset dataset = fileUploadService.uploadAndExtract(file);
         return ResponseEntity.ok(Map.of("success", true, "message", "上传成功", "dataset", dataset));
     }
 
@@ -93,9 +91,9 @@ public class FileController {
     @PostMapping("/prompts/regenerate")
     public ResponseEntity<Map<String, Object>> regeneratePrompts(
             @RequestBody List<ImagePrompt> prompts,
-            @RequestParam(value = "useAiGeneration", defaultValue = "false") boolean useAi
+            @RequestParam("generatorId") String generatorId
     ) {
-        promptService.generatePrompts(prompts);
+        promptService.generatePrompts(prompts, generatorId);
         promptService.savePromptFiles(prompts);
         return ResponseEntity.ok(Map.of("success", true, "data", Map.of("images", prompts)));
     }
