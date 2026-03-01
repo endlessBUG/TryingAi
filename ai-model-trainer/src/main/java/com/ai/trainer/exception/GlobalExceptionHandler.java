@@ -1,6 +1,7 @@
 package com.ai.trainer.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -21,6 +22,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleFileProcess(FileProcessException e) {
         log.error("文件处理异常: {}", e.getMessage(), e);
         return ResponseEntity.badRequest().body(buildError(e.getMessage()));
+    }
+
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbort(ClientAbortException e) {
+        log.debug("客户端主动断开连接: {}", e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

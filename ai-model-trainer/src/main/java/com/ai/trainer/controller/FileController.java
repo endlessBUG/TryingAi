@@ -11,13 +11,11 @@ import com.ai.trainer.service.PromptOptimizeService;
 import com.ai.trainer.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.core.io.Resource;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -67,25 +65,28 @@ public class FileController {
     }
 
     @GetMapping("/datasets/{datasetId}/images/{imageName}")
-    public ResponseEntity<Resource> getImage(
+    public void getImage(
             @PathVariable String datasetId,
-            @PathVariable String imageName
+            @PathVariable String imageName,
+            HttpServletResponse response
     ) throws Exception {
         List<ImagePrompt> images = imagePromptRepo.findByDatasetId(datasetId);
         ImagePrompt target = images.stream()
                 .filter(img -> img.getImageName().equals(imageName))
                 .findFirst().orElse(null);
+
         if (target == null || !storageService.exists(target.getImagePath())) {
-            return ResponseEntity.notFound().build();
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
         }
 
         String contentType = Files.probeContentType(new File(target.getImagePath()).toPath());
-        if (contentType == null) contentType = "application/octet-stream";
+        response.setContentType(contentType != null ? contentType : "application/octet-stream");
 
-        InputStream is = storageService.load(target.getImagePath());
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType))
-                .body(new InputStreamResource(is));
+        try (InputStream is = storageService.load(target.getImagePath())) {
+            is.transferTo(response.getOutputStream());
+            response.flushBuffer();
+        }
     }
 
     @PutMapping("/prompts")

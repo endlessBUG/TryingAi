@@ -129,19 +129,23 @@ public class CondaService {
         runInEnv(envName, cmd, null);
     }
 
+    private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");
+
     public String runInEnv(String envName, String command, File workDir) {
-        String condaPath = getCondaPath();
-        return executeProcess(new String[]{"cmd", "/c", condaPath, "run", "--no-capture-output", "-n", envName, "cmd", "/c", command}, workDir);
+        return executeProcess(buildRunInEnvArgs(envName, command), workDir);
     }
 
     public String buildFullCommand(String envName, String command) {
-        return getCondaPath() + " run --no-capture-output -n " + envName + " cmd /c " + command;
+        String condaPath = getCondaPath();
+        if (IS_WINDOWS) {
+            return condaPath + " run --no-capture-output -n " + envName + " cmd /c " + command;
+        }
+        return condaPath + " run --no-capture-output -n " + envName + " bash -c \"" + command + "\"";
     }
 
     public Process startInEnv(String envName, String command, File workDir) {
-        String condaPath = getCondaPath();
         try {
-            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", condaPath, "run", "--no-capture-output", "-n", envName, "cmd", "/c", command);
+            ProcessBuilder pb = new ProcessBuilder(buildRunInEnvArgs(envName, command));
             if (workDir != null) pb.directory(workDir);
             pb.redirectErrorStream(true);
             return pb.start();
@@ -150,19 +154,28 @@ public class CondaService {
         }
     }
 
-    private String executeCondaCommand(String... args) {
+    private String[] buildRunInEnvArgs(String envName, String command) {
         String condaPath = getCondaPath();
-        String[] command = new String[args.length + 3];
-        command[0] = "cmd";
-        command[1] = "/c";
-        command[2] = condaPath;
-        System.arraycopy(args, 0, command, 3, args.length);
-
-        return executeProcess(command, null);
+        if (IS_WINDOWS) {
+            return new String[]{"cmd", "/c", condaPath, "run", "--no-capture-output", "-n", envName, "cmd", "/c", command};
+        }
+        return new String[]{condaPath, "run", "--no-capture-output", "-n", envName, "bash", "-c", command};
     }
 
-    private String executeShellCommand(String command, File workDir) {
-        return executeProcess(new String[]{"cmd", "/c", command}, workDir);
+    private String executeCondaCommand(String... args) {
+        String condaPath = getCondaPath();
+        if (IS_WINDOWS) {
+            String[] command = new String[args.length + 3];
+            command[0] = "cmd";
+            command[1] = "/c";
+            command[2] = condaPath;
+            System.arraycopy(args, 0, command, 3, args.length);
+            return executeProcess(command, null);
+        }
+        String[] command = new String[args.length + 1];
+        command[0] = condaPath;
+        System.arraycopy(args, 0, command, 1, args.length);
+        return executeProcess(command, null);
     }
 
     private String executeProcess(String[] command, File workDir) {

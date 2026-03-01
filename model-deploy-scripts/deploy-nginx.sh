@@ -116,6 +116,18 @@ server {
     gzip_min_length 1k;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
 
+    # ^~ ensures /api/ takes priority over regex location blocks below
+    location ^~ /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 300s;
+        client_max_body_size 500m;
+    }
+
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
         expires 7d;
         add_header Cache-Control "public, immutable";
@@ -124,17 +136,6 @@ server {
     location / {
         try_files \$uri \$uri/ /index.html;
     }
-
-    # reverse proxy backend API (enable if needed)
-    # location /api/ {
-    #     proxy_pass http://127.0.0.1:8080;
-    #     proxy_set_header Host \$host;
-    #     proxy_set_header X-Real-IP \$remote_addr;
-    #     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    #     proxy_set_header X-Forwarded-Proto \$scheme;
-    #     proxy_connect_timeout 60s;
-    #     proxy_read_timeout 120s;
-    # }
 
     location ~ /\. {
         deny all;
