@@ -25,6 +25,8 @@ public class PromptGenerator {
     @Column(length = 2000)
     private String systemPrompt;
     @Builder.Default
+    private Integer maxTokens = 1000;
+    @Builder.Default
     private Boolean enabled = true;
     private LocalDateTime createdAt;
 }

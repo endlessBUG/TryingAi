@@ -24,4 +24,7 @@ public class ImagePrompt {
     private Integer width;
     private Integer height;
     private Long fileSize;
+    private Double qualityScore;
+    @Column(length = 500)
+    private String qualityReason;
 }

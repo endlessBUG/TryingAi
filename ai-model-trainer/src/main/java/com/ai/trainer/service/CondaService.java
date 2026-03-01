@@ -53,9 +53,33 @@ public class CondaService {
         }
         log.info("在环境 {} 中安装依赖: {}", envName, requirementsPath);
         String actualPath = preprocessRequirements(requirementsPath);
-        String result = runInEnv(envName, "pip install -r " + actualPath, reqFile.getParentFile());
+        String pipCmd = buildPipInstallCommand(actualPath);
+        String result = runInEnv(envName, pipCmd, reqFile.getParentFile());
         log.debug("pip install output: {}", result);
         log.info("依赖安装完成: {}", envName);
+    }
+
+    private String buildPipInstallCommand(String requirementsPath) {
+        String indexUrl = getPipIndexUrl();
+        if (indexUrl != null && !indexUrl.isBlank()) {
+            return String.format("pip install -r \"%s\" -i %s --trusted-host %s",
+                    requirementsPath, indexUrl, extractHost(indexUrl));
+        }
+        return String.format("pip install -r \"%s\"", requirementsPath);
+    }
+
+    private String getPipIndexUrl() {
+        return configRepo.findById("pip.index.url")
+                .map(c -> c.getConfigValue())
+                .orElse(null);
+    }
+
+    private String extractHost(String url) {
+        try {
+            return new java.net.URL(url).getHost();
+        } catch (Exception e) {
+            return url;
+        }
     }
 
     private String preprocessRequirements(String requirementsPath) {
@@ -88,16 +112,42 @@ public class CondaService {
                 .orElse(null);
     }
 
+    public boolean isModuleInstalled(String envName, String moduleName) {
+        try {
+            runInEnv(envName, "pip show " + moduleName, null);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public void pipInstall(String envName, String packages, String indexUrl) {
+        String base = "pip install " + packages + " --no-cache-dir --timeout 300";
+        String cmd = indexUrl != null && !indexUrl.isBlank()
+                ? base + " --index-url " + indexUrl
+                : base;
+        runInEnv(envName, cmd, null);
+    }
+
     public String runInEnv(String envName, String command, File workDir) {
         String condaPath = getCondaPath();
-        String fullCommand = String.format("\"%s\" activate %s && %s", condaPath, envName, command);
-        return executeShellCommand(fullCommand, workDir);
+        return executeProcess(new String[]{"cmd", "/c", condaPath, "run", "--no-capture-output", "-n", envName, "cmd", "/c", command}, workDir);
+    }
+
+    public String buildFullCommand(String envName, String command) {
+        return getCondaPath() + " run --no-capture-output -n " + envName + " cmd /c " + command;
     }
 
     public Process startInEnv(String envName, String command, File workDir) {
         String condaPath = getCondaPath();
-        String fullCommand = String.format("\"%s\" activate %s && %s", condaPath, envName, command);
-        return startShellProcess(fullCommand, workDir);
+        try {
+            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", condaPath, "run", "--no-capture-output", "-n", envName, "cmd", "/c", command);
+            if (workDir != null) pb.directory(workDir);
+            pb.redirectErrorStream(true);
+            return pb.start();
+        } catch (Exception e) {
+            throw new TrainingException("启动进程失败: " + e.getMessage());
+        }
     }
 
     private String executeCondaCommand(String... args) {
@@ -113,17 +163,6 @@ public class CondaService {
 
     private String executeShellCommand(String command, File workDir) {
         return executeProcess(new String[]{"cmd", "/c", command}, workDir);
-    }
-
-    private Process startShellProcess(String command, File workDir) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", command);
-            if (workDir != null) pb.directory(workDir);
-            pb.redirectErrorStream(true);
-            return pb.start();
-        } catch (Exception e) {
-            throw new TrainingException("启动进程失败: " + e.getMessage());
-        }
     }
 
     private String executeProcess(String[] command, File workDir) {

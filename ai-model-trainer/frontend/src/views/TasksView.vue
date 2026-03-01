@@ -5,6 +5,13 @@
         <div class="card-header">
           <span>任务列表</span>
           <div>
+            <el-button
+              v-if="selectedTasks.length >= 2"
+              type="warning"
+              @click="showCompareDialog"
+            >
+              对比 ({{ selectedTasks.length }})
+            </el-button>
             <el-button @click="loadTasks" :loading="loading">刷新</el-button>
             <el-button type="primary" @click="showCreateDialog">
               <el-icon><plus /></el-icon>创建任务
@@ -45,8 +52,16 @@
         </div>
       </div>
 
+      <!-- 筛选提示 -->
+      <div v-if="filterDatasetName" style="margin-bottom: 12px">
+        <el-tag closable @close="clearFilter">
+          数据集: {{ filterDatasetName }}
+        </el-tag>
+      </div>
+
       <!-- 任务列表 -->
-      <el-table :data="tasks" stripe v-loading="loading" empty-text="暂无任务">
+      <el-table :data="tasks" stripe v-loading="loading" empty-text="暂无任务" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="40" />
         <el-table-column prop="taskName" label="任务名称" min-width="150" />
         <el-table-column label="数据集" min-width="120">
           <template #default="{ row }">
@@ -126,7 +141,23 @@
 
         <el-form-item>
           <el-button size="small" @click="loadTemplate">加载默认模板</el-button>
+          <el-button size="small" type="success" :loading="recommending" @click="handleRecommend">智能推荐参数</el-button>
         </el-form-item>
+
+        <el-alert v-if="recommendResult" type="info" :closable="true" style="margin-bottom: 12px" @close="recommendResult = null">
+          <template #title>
+            <span style="font-weight: 600">推荐参数</span>（{{ recommendResult.imageCount }} 张图片，平均分辨率 {{ recommendResult.avgResolution }}px）
+          </template>
+          <div style="margin-top: 4px; line-height: 1.8; font-size: 13px">
+            Steps: <b>{{ recommendResult.steps }}</b> |
+            学习率: <b>{{ recommendResult.learningRate }}</b> |
+            Rank: <b>{{ recommendResult.networkRank }}</b> |
+            Alpha: <b>{{ recommendResult.networkAlpha }}</b> |
+            Batch: <b>{{ recommendResult.batchSize }}</b> |
+            分辨率: <b>{{ recommendResult.resolution }}</b><br/>
+            <span style="color: #909399">{{ recommendResult.reason }}</span>
+          </div>
+        </el-alert>
       </el-form>
 
       <template #footer>
@@ -148,6 +179,14 @@
 
         <el-form-item label="训练器">
           <el-input :model-value="currentTask.trainerName || '-'" disabled />
+        </el-form-item>
+
+        <el-form-item label="虚拟环境">
+          <el-input :model-value="currentTask.condaEnvName || '-'" disabled />
+        </el-form-item>
+
+        <el-form-item label="执行命令">
+          <el-input :model-value="currentTask.executeCommand || '-'" disabled type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
         </el-form-item>
 
         <el-row :gutter="16">
@@ -202,8 +241,27 @@
           </el-col>
         </el-row>
 
+        <el-form-item v-if="lossChartData.length > 0" label="Loss 曲线">
+          <div class="loss-chart-wrapper">
+            <v-chart :option="lossChartOption" autoresize style="width: 100%; height: 260px" />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="日志文件">
+          <div v-if="currentTask.logPath" style="display: flex; align-items: center; gap: 8px; width: 100%">
+            <el-input :model-value="currentTask.logPath" disabled style="flex: 1" />
+            <el-button type="primary" size="small" @click="openLogViewer">查看日志</el-button>
+          </div>
+          <span v-else class="no-data">暂无日志文件</span>
+        </el-form-item>
+
         <el-form-item v-if="currentTask.errorMessage" label="错误信息">
-          <el-alert type="error" :closable="false" style="width: 100%">{{ currentTask.errorMessage }}</el-alert>
+          <el-alert type="error" :closable="false" style="width: 100%">
+            {{ currentTask.errorMessage }}
+            <el-button v-if="currentTask.logPath" type="danger" size="small" link style="margin-left: 8px" @click="openLogViewer">
+              查看完整日志
+            </el-button>
+          </el-alert>
         </el-form-item>
 
         <el-form-item label="YAML 配置">
@@ -212,23 +270,84 @@
         </el-form-item>
       </el-form>
     </el-dialog>
+
+    <!-- 日志查看弹窗 -->
+    <el-dialog v-model="logVisible" title="训练日志" width="900px" top="5vh">
+      <div v-loading="logLoading" class="log-viewer">
+        <pre>{{ logContent }}</pre>
+      </div>
+      <template #footer>
+        <el-button @click="logVisible = false">关闭</el-button>
+        <el-button type="primary" @click="refreshLog">刷新</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 实验对比弹窗 -->
+    <el-dialog v-model="compareVisible" title="实验对比" width="900px">
+      <el-table :data="compareTasks" border stripe size="small">
+        <el-table-column prop="taskName" label="任务名称" min-width="120" />
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="步数" width="80" align="center">
+          <template #default="{ row }">{{ row.totalSteps || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="最终 Loss" width="100" align="center">
+          <template #default="{ row }">{{ getLastLoss(row) }}</template>
+        </el-table-column>
+        <el-table-column label="训练器" width="100">
+          <template #default="{ row }">{{ row.trainerName || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="160" align="center">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+
+      <div v-if="compareChartData.length > 0" class="loss-chart-wrapper" style="margin-top: 16px">
+        <v-chart :option="compareChartOption" autoresize style="width: 100%; height: 300px" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Document, Refresh, CircleCheck, CircleClose } from '@element-plus/icons-vue'
-import { getAllTasks, createTask, startTask, stopTask, restartTask, deleteTask, getTask } from '@/api/training'
+import { getAllTasks, createTask, startTask, stopTask, restartTask, deleteTask, getTask, recommendParams, getTaskLog } from '@/api/training'
 import YamlEditor from '@/components/YamlEditor.vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, MarkLineComponent, LegendComponent } from 'echarts/components'
+
+use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, MarkLineComponent, LegendComponent])
 import { getDatasets } from '@/api/file'
 import { getTrainers } from '@/api/trainer'
 import type { TrainingTask, TaskStatus, Dataset, Trainer, CreateTaskRequest } from '@/types'
 
+const route = useRoute()
+const router = useRouter()
+
 // 列表
-const tasks = ref<TrainingTask[]>([])
+const allTasks = ref<TrainingTask[]>([])
 const loading = ref(false)
 let refreshTimer: number | null = null
+const filterDatasetName = ref((route.query.datasetName as string) || '')
+
+const tasks = computed(() => {
+  if (!filterDatasetName.value) return allTasks.value
+  return allTasks.value.filter(t => t.datasetName === filterDatasetName.value)
+})
+
+const clearFilter = () => {
+  filterDatasetName.value = ''
+  router.replace({ query: {} })
+}
 
 // 创建
 const createVisible = ref(false)
@@ -245,9 +364,130 @@ const rules = {
   yamlConfig: [{ required: true, message: '请填写 YAML 配置', trigger: 'blur' }]
 }
 
+// 推荐
+const recommending = ref(false)
+const recommendResult = ref<Record<string, any> | null>(null)
+
 // 详情
 const detailVisible = ref(false)
 const currentTask = ref<TrainingTask | null>(null)
+
+// 日志查看
+const logVisible = ref(false)
+const logContent = ref('')
+const logLoading = ref(false)
+
+// 选择对比
+const selectedTasks = ref<TrainingTask[]>([])
+const compareVisible = ref(false)
+const compareTasks = ref<TrainingTask[]>([])
+
+const handleSelectionChange = (val: TrainingTask[]) => {
+  selectedTasks.value = val
+}
+
+const openLogViewer = async () => {
+  if (!currentTask.value?.taskId) return
+  logVisible.value = true
+  await fetchLog(currentTask.value.taskId)
+}
+
+const refreshLog = async () => {
+  if (!currentTask.value?.taskId) return
+  await fetchLog(currentTask.value.taskId)
+}
+
+const fetchLog = async (taskId: string) => {
+  logLoading.value = true
+  try {
+    const res = await getTaskLog(taskId)
+    logContent.value = (res as any).content || '暂无日志'
+  } catch {
+    logContent.value = '读取日志失败'
+  } finally {
+    logLoading.value = false
+  }
+}
+
+const showCompareDialog = () => {
+  compareTasks.value = [...selectedTasks.value]
+  compareVisible.value = true
+}
+
+const getLastLoss = (task: TrainingTask) => {
+  if (!task.lossHistory) return '-'
+  const entries = task.lossHistory.split(',')
+  const last = entries[entries.length - 1]
+  return last ? last.split(':')[1] : '-'
+}
+
+const compareChartData = computed(() => {
+  return compareTasks.value
+    .filter(t => t.lossHistory)
+    .map(t => ({
+      name: t.taskName,
+      data: t.lossHistory!.split(',').map(e => {
+        const [step, loss] = e.split(':')
+        return { step: Number(step), loss: Number(loss) }
+      }).filter(d => !isNaN(d.step) && !isNaN(d.loss))
+    }))
+})
+
+const COMPARE_COLORS = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399']
+
+const compareChartOption = computed(() => {
+  const allSteps = new Set<number>()
+  compareChartData.value.forEach(s => s.data.forEach(d => allSteps.add(d.step)))
+  const steps = Array.from(allSteps).sort((a, b) => a - b)
+
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { data: compareChartData.value.map(s => s.name) },
+    grid: { left: 50, right: 20, top: 40, bottom: 30 },
+    xAxis: { type: 'category', data: steps, name: 'Step' },
+    yAxis: { type: 'value', name: 'Loss', min: 'dataMin' },
+    series: compareChartData.value.map((s, i) => ({
+      name: s.name,
+      type: 'line',
+      smooth: true,
+      symbol: 'none',
+      data: steps.map(step => {
+        const point = s.data.find(d => d.step === step)
+        return point ? point.loss : null
+      }),
+      lineStyle: { width: 2, color: COMPARE_COLORS[i % COMPARE_COLORS.length] }
+    }))
+  }
+})
+
+// Loss 曲线
+const lossChartData = computed(() => {
+  if (!currentTask.value?.lossHistory) return []
+  return currentTask.value.lossHistory.split(',').map(entry => {
+    const [step, loss] = entry.split(':')
+    return { step: Number(step), loss: Number(loss) }
+  }).filter(d => !isNaN(d.step) && !isNaN(d.loss))
+})
+
+const lossChartOption = computed(() => ({
+  tooltip: { trigger: 'axis', formatter: (p: any) => `Step ${p[0].axisValue}<br/>Loss: <b>${p[0].data}</b>` },
+  grid: { left: 50, right: 20, top: 20, bottom: 30 },
+  xAxis: { type: 'category', data: lossChartData.value.map(d => d.step), name: 'Step' },
+  yAxis: { type: 'value', name: 'Loss', min: 'dataMin' },
+  series: [{
+    type: 'line',
+    data: lossChartData.value.map(d => d.loss),
+    smooth: true,
+    symbol: 'none',
+    lineStyle: { width: 2, color: '#409eff' },
+    areaStyle: { color: 'rgba(64,158,255,0.08)' },
+    markLine: lossChartData.value.length > 10 ? {
+      silent: true,
+      data: [{ type: 'average', name: '平均' }],
+      lineStyle: { color: '#e6a23c' }
+    } : undefined
+  }]
+}))
 
 // 统计
 const runningCount = computed(() => tasks.value.filter(t => t.status === 'RUNNING' || t.status === 'PREPARING').length)
@@ -258,8 +498,8 @@ const loadTasks = async () => {
   loading.value = true
   try {
     const res = await getAllTasks()
-    tasks.value = res.tasks || []
-  } catch { tasks.value = [] }
+    allTasks.value = res.tasks || []
+  } catch { allTasks.value = [] }
   finally { loading.value = false }
 }
 
@@ -313,6 +553,23 @@ const loadTemplate = () => {
     createForm.value.yamlConfig = replaceDatasetPlaceholder(trainer.defaultYamlConfig)
   } else {
     ElMessage.warning('请先选择训练器，或在训练器管理中配置默认模板')
+  }
+}
+
+const handleRecommend = async () => {
+  if (!createForm.value.datasetId) {
+    ElMessage.warning('请先选择数据集')
+    return
+  }
+  recommending.value = true
+  try {
+    const res = await recommendParams(createForm.value.datasetId)
+    recommendResult.value = res.data || {}
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('获取推荐参数失败')
+  } finally {
+    recommending.value = false
   }
 }
 
@@ -490,5 +747,28 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
 .no-data {
   color: #909399;
   font-size: 13px;
+}
+.loss-chart-wrapper {
+  width: 100%;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fafafa;
+}
+.log-viewer {
+  height: 60vh;
+  overflow: auto;
+  background: #1e1e1e;
+  border-radius: 6px;
+  padding: 16px;
+}
+.log-viewer pre {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

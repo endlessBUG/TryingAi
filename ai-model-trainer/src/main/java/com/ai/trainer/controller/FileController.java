@@ -4,7 +4,10 @@ import com.ai.trainer.model.Dataset;
 import com.ai.trainer.model.ImagePrompt;
 import com.ai.trainer.repository.ImagePromptRepository;
 import com.ai.trainer.service.FileUploadService;
+import com.ai.trainer.service.ImagePreprocessService;
+import com.ai.trainer.service.ImageQualityService;
 import com.ai.trainer.service.PromptGeneratorService;
+import com.ai.trainer.service.PromptOptimizeService;
 import com.ai.trainer.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +34,9 @@ public class FileController {
     private final PromptGeneratorService promptService;
     private final FileStorageService storageService;
     private final ImagePromptRepository imagePromptRepo;
+    private final ImageQualityService imageQualityService;
+    private final PromptOptimizeService promptOptimizeService;
+    private final ImagePreprocessService imagePreprocessService;
 
     @GetMapping("/datasets")
     public ResponseEntity<Map<String, Object>> listDatasets() {
@@ -88,13 +94,43 @@ public class FileController {
         return ResponseEntity.ok(Map.of("success", true, "message", "提示词保存成功"));
     }
 
-    @PostMapping("/prompts/regenerate")
-    public ResponseEntity<Map<String, Object>> regeneratePrompts(
-            @RequestBody List<ImagePrompt> prompts,
+    @PostMapping("/datasets/{datasetId}/preprocess")
+    public ResponseEntity<Map<String, Object>> preprocessImages(
+            @PathVariable String datasetId,
+            @RequestParam(value = "resolution", defaultValue = "512") int resolution
+    ) {
+        Map<String, Object> result = imagePreprocessService.preprocess(datasetId, resolution);
+        return ResponseEntity.ok(Map.of("success", true, "data", result));
+    }
+
+    @PostMapping("/datasets/{datasetId}/evaluate-quality")
+    public ResponseEntity<Map<String, Object>> evaluateQuality(
+            @PathVariable String datasetId,
             @RequestParam("generatorId") String generatorId
     ) {
-        promptService.generatePrompts(prompts, generatorId);
-        promptService.savePromptFiles(prompts);
-        return ResponseEntity.ok(Map.of("success", true, "data", Map.of("images", prompts)));
+        imageQualityService.evaluateDataset(datasetId, generatorId);
+        Dataset ds = fileUploadService.getDatasetWithPrompts(datasetId);
+        return ResponseEntity.ok(Map.of("success", true, "data", ds));
+    }
+
+    @PostMapping("/datasets/{datasetId}/optimize-prompts")
+    public ResponseEntity<Map<String, Object>> optimizePrompts(
+            @PathVariable String datasetId,
+            @RequestParam(value = "triggerWord", required = false) String triggerWord
+    ) {
+        List<ImagePrompt> images = imagePromptRepo.findByDatasetId(datasetId);
+        promptOptimizeService.optimize(images, triggerWord);
+        promptService.savePromptFiles(images);
+        imagePromptRepo.saveAll(images);
+        return ResponseEntity.ok(Map.of("success", true, "data", Map.of("images", images)));
+    }
+
+    @PostMapping("/prompts/regenerate")
+    public ResponseEntity<Map<String, Object>> regeneratePrompts(
+            @RequestParam("datasetId") String datasetId,
+            @RequestParam("generatorId") String generatorId
+    ) {
+        promptService.generatePromptsAsync(datasetId, generatorId);
+        return ResponseEntity.ok(Map.of("success", true, "message", "提示词生成已开始，请稍后刷新查看"));
     }
 }

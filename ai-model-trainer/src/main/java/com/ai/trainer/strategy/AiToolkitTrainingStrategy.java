@@ -32,32 +32,63 @@ public class AiToolkitTrainingStrategy implements TrainingStrategy {
                 || git.contains("ai-toolkit") || git.contains("ai_toolkit");
     }
 
+    private static final String PYTORCH_INDEX = "https://download.pytorch.org/whl/cu126";
+    private static final String PYTORCH_PACKAGES = "torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0";
+
     @Override
     public void ensureEnvironment(Trainer trainer) {
         String envName = resolveEnvName(trainer);
         String pyVer = orDefault(trainer.getPythonVersion(), "3.10");
         condaService.createEnv(envName, pyVer);
-        installDependencies(envName, trainer);
+        ensurePyTorch(envName);
+        ensureRequirements(envName, trainer);
+    }
+
+    private void ensurePyTorch(String envName) {
+        if (condaService.isModuleInstalled(envName, "torchaudio")) {
+            log.info("PyTorch 套件已就绪: {}", envName);
+            return;
+        }
+        log.info("安装 PyTorch 套件: {}", envName);
+        condaService.pipInstall(envName, PYTORCH_PACKAGES, PYTORCH_INDEX);
+    }
+
+    private void ensureRequirements(String envName, Trainer trainer) {
+        String reqPath = trainer.getPath() + File.separator + "requirements.txt";
+        if (!new File(reqPath).exists()) return;
+        if (condaService.isModuleInstalled(envName, "diffusers")) {
+            log.info("AI Toolkit 依赖已就绪: {}", envName);
+            return;
+        }
+        log.info("安装 AI Toolkit 依赖: {}", envName);
+        condaService.installRequirements(envName, reqPath);
     }
 
     @Override
     public void executeTraining(TrainingTask task, Trainer trainer, TaskManagerService taskMgr) {
         String envName = resolveEnvName(trainer);
+        task.setCondaEnvName(envName);
+        taskMgr.setTaskCondaEnvName(task.getTaskId(), envName);
+
         String configPath = writeYamlConfig(task);
         task.setConfigPath(configPath);
 
         String outputDir = generateOutputDir(task);
         task.setOutputPath(outputDir);
 
-        String command = "python run.py --config " + configPath;
+        String command = "python run.py \"" + configPath + "\"";
         File workDir = new File(trainer.getPath());
+        String fullCommand = condaService.buildFullCommand(envName, command);
+        task.setExecuteCommand(fullCommand);
+        taskMgr.setTaskExecuteCommand(task.getTaskId(), fullCommand);
 
-        log.info("执行 ai-toolkit 训练: env={}, workDir={}", envName, workDir);
+        log.info("执行 ai-toolkit 训练: cmd={}, workDir={}", fullCommand, workDir);
         Process process = condaService.startInEnv(envName, command, workDir);
         taskMgr.setTaskProcessId(task.getTaskId(), process.pid());
 
         String logPath = properties.getLogDir() + "/training_" + task.getTaskId() + ".log";
         task.setLogPath(logPath);
+        taskMgr.setTaskLogPath(task.getTaskId(), logPath);
         readProcessOutput(process, task.getTaskId(), logPath, taskMgr);
 
         waitForProcess(process);
@@ -69,20 +100,21 @@ public class AiToolkitTrainingStrategy implements TrainingStrategy {
         ProcessHandle.of(task.getProcessId()).ifPresent(ProcessHandle::destroy);
     }
 
-    private void installDependencies(String envName, Trainer trainer) {
-        String reqPath = trainer.getPath() + File.separator + "requirements.txt";
-        condaService.installRequirements(envName, reqPath);
-    }
-
     private String writeYamlConfig(TrainingTask task) {
         try {
             String configDir = properties.getConfigDir();
             Path path = Path.of(configDir, task.getTaskId() + ".yaml");
-            Files.writeString(path, orEmpty(task.getYamlConfig()));
+            String yaml = normalizeYamlPaths(orEmpty(task.getYamlConfig()));
+            Files.writeString(path, yaml);
             return path.toAbsolutePath().toString();
         } catch (IOException e) {
             throw new TrainingException("写入 YAML 配置失败: " + e.getMessage());
         }
+    }
+
+    /** 将 YAML 中所有 Windows 反斜杠路径转为正斜杠，防止 YAML 解析转义错误 */
+    private String normalizeYamlPaths(String yaml) {
+        return yaml.replace("\\", "/");
     }
 
     private String generateOutputDir(TrainingTask task) {

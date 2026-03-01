@@ -20,6 +20,17 @@ export function deletePromptGenerator(id: string): Promise<ApiResponse> {
   return request({ url: `/prompt-generators/${id}`, method: 'delete' })
 }
 
-export function testPromptGenerator(id: string): Promise<ApiResponse<string>> {
+export function testPromptGenerator(id: string, file?: File): Promise<ApiResponse<string>> {
+  if (file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request({
+      url: `/prompt-generators/${id}/test`,
+      method: 'post',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000
+    })
+  }
   return request({ url: `/prompt-generators/${id}/test`, method: 'post', timeout: 60000 })
 }

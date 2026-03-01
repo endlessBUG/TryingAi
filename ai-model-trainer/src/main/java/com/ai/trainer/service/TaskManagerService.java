@@ -40,6 +40,10 @@ public class TaskManagerService {
         return taskRepo.findByStatus(status);
     }
 
+    public List<TrainingTask> getTasksByDataset(String datasetId) {
+        return taskRepo.findByDatasetId(datasetId);
+    }
+
     public void updateTaskStatus(String taskId, TaskStatus status) {
         TrainingTask task = taskRepo.findById(taskId).orElse(null);
         if (task == null) return;
@@ -61,10 +65,40 @@ public class TaskManagerService {
         taskRepo.save(task);
     }
 
+    public void appendLoss(String taskId, int step, double loss) {
+        TrainingTask task = taskRepo.findById(taskId).orElse(null);
+        if (task == null) return;
+        String entry = step + ":" + loss;
+        String history = task.getLossHistory();
+        task.setLossHistory(history == null ? entry : history + "," + entry);
+        taskRepo.save(task);
+    }
+
     public void setTaskProcessId(String taskId, long processId) {
         TrainingTask task = taskRepo.findById(taskId).orElse(null);
         if (task == null) return;
         task.setProcessId(processId);
+        taskRepo.save(task);
+    }
+
+    public void setTaskCondaEnvName(String taskId, String condaEnvName) {
+        TrainingTask task = taskRepo.findById(taskId).orElse(null);
+        if (task == null) return;
+        task.setCondaEnvName(condaEnvName);
+        taskRepo.save(task);
+    }
+
+    public void setTaskExecuteCommand(String taskId, String command) {
+        TrainingTask task = taskRepo.findById(taskId).orElse(null);
+        if (task == null) return;
+        task.setExecuteCommand(command);
+        taskRepo.save(task);
+    }
+
+    public void setTaskLogPath(String taskId, String logPath) {
+        TrainingTask task = taskRepo.findById(taskId).orElse(null);
+        if (task == null) return;
+        task.setLogPath(logPath);
         taskRepo.save(task);
     }
 

@@ -9,4 +9,6 @@ import java.util.List;
 public interface TrainingTaskRepository extends JpaRepository<TrainingTask, String> {
 
     List<TrainingTask> findByStatus(TaskStatus status);
+
+    List<TrainingTask> findByDatasetId(String datasetId);
 }

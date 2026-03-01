@@ -12,8 +12,8 @@
         <el-table-column prop="name" label="名称" min-width="140" />
         <el-table-column label="类型" width="130">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'LOCAL_MODEL' ? 'success' : 'primary'" size="small">
-              {{ row.type === 'LOCAL_MODEL' ? '本地模型' : '远程API' }}
+            <el-tag :type="typeTagMap[row.type]?.tag ?? 'info'" size="small">
+              {{ typeTagMap[row.type]?.label ?? row.type }}
             </el-tag>
           </template>
         </el-table-column>
@@ -39,6 +39,31 @@
         </el-table-column>
       </el-table>
 
+    <!-- 图片测试对话框（CogVLM2 需要） -->
+    <el-dialog v-model="testImageDialogVisible" title="上传测试图片" width="420px">
+      <el-upload
+        ref="uploadRef"
+        drag
+        :auto-upload="false"
+        :limit="1"
+        accept="image/*"
+        :on-change="onTestImageChange"
+        :on-remove="() => testImageFile = undefined"
+      >
+        <el-icon style="font-size: 40px; color: #c0c4cc"><upload-filled /></el-icon>
+        <div style="margin-top: 8px;">拖拽图片到此处，或点击选择</div>
+        <template #tip>
+          <div style="font-size: 12px; color: #909399; margin-top: 4px;">支持 jpg / png / webp</div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="testImageDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!testImageFile" :loading="!!testingId" @click="submitImageTest">
+          开始测试
+        </el-button>
+      </template>
+    </el-dialog>
+
       <!-- 测试结果 -->
       <el-alert
         v-if="testResult !== null"
@@ -61,8 +86,9 @@
         </el-form-item>
         <el-form-item label="类型" prop="type">
           <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
-            <el-option label="本地模型" value="LOCAL_MODEL" />
-            <el-option label="远程API" value="REMOTE_API" />
+            <el-option label="CogVLM2" value="COGVLM2" />
+            <el-option label="JoyCaption" value="JOYCAPTION" />
+            <el-option label="OpenAI Vision" value="OPENAI_VISION" />
           </el-select>
         </el-form-item>
         <el-form-item label="服务地址" prop="baseUrl">
@@ -83,6 +109,10 @@
             默认：Describe this image in detail for AI training. Output comma-separated English tags.
           </div>
         </el-form-item>
+        <el-form-item label="最大 Token 数">
+          <el-input-number v-model="form.maxTokens" :min="100" :max="8000" :step="100" style="width: 200px" />
+          <div class="field-hint">控制生成描述的最大长度，详细描述建议 1500～2000，默认 1000</div>
+        </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="form.enabled" />
         </el-form-item>
@@ -97,8 +127,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import type { FormInstance, FormRules } from 'element-plus'
+import type { FormInstance, FormRules, UploadInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 import {
   getPromptGenerators, createPromptGenerator,
   updatePromptGenerator, deletePromptGenerator, testPromptGenerator
@@ -115,13 +146,24 @@ const submitting = ref(false)
 const formRef = ref<FormInstance>()
 const testingId = ref('')
 const testResult = ref<{ success: boolean; message: string } | null>(null)
+const testImageDialogVisible = ref(false)
+const testImageFile = ref<File | undefined>()
+const testingRow = ref<PromptGenerator | null>(null)
+const uploadRef = ref<UploadInstance>()
+
+const typeTagMap: Record<string, { label: string; tag: string }> = {
+  COGVLM2: { label: 'CogVLM2', tag: 'success' },
+  JOYCAPTION: { label: 'JoyCaption', tag: 'warning' },
+  OPENAI_VISION: { label: 'OpenAI Vision', tag: 'primary' }
+}
 
 const defaultForm = (): PromptGenerator => ({
   name: '',
-  type: GeneratorType.LOCAL_MODEL,
+  type: GeneratorType.COGVLM2,
   baseUrl: '',
   modelName: '',
   systemPrompt: '',
+  maxTokens: 1000,
   enabled: true
 })
 
@@ -160,6 +202,7 @@ function handleEdit(row: PromptGenerator) {
     baseUrl: row.baseUrl,
     modelName: row.modelName,
     systemPrompt: row.systemPrompt || '',
+    maxTokens: row.maxTokens ?? 1000,
     enabled: row.enabled
   }
   dialogVisible.value = true
@@ -189,12 +232,35 @@ async function handleDelete(id: string) {
   await loadList()
 }
 
-async function handleTest(row: PromptGenerator) {
+function handleTest(row: PromptGenerator) {
+  if (!row.id) return
+  testResult.value = null
+  if (row.type === 'COGVLM2' || row.type === 'JOYCAPTION') {
+    testingRow.value = row
+    testImageFile.value = undefined
+    uploadRef.value?.clearFiles()
+    testImageDialogVisible.value = true
+  } else {
+    doTest(row)
+  }
+}
+
+function onTestImageChange(_file: any, fileList: any[]) {
+  testImageFile.value = fileList[0]?.raw
+}
+
+async function submitImageTest() {
+  if (!testingRow.value?.id || !testImageFile.value) return
+  testImageDialogVisible.value = false
+  await doTest(testingRow.value, testImageFile.value)
+}
+
+async function doTest(row: PromptGenerator, file?: File) {
   if (!row.id) return
   testingId.value = row.id
   testResult.value = null
   try {
-    const res = await testPromptGenerator(row.id)
+    const res = await testPromptGenerator(row.id, file)
     if (res.success) {
       testResult.value = { success: true, message: '模型回复: ' + (res.data || '(空)') }
     } else {

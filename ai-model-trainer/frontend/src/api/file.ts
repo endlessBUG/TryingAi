@@ -49,17 +49,59 @@ export function updatePrompts(prompts: ImagePrompt[]): Promise<ApiResponse> {
 }
 
 /**
- * 使用指定生成器生成提示词
+ * 图片预处理
+ */
+export function preprocessImages(
+  datasetId: string,
+  resolution: number = 512
+): Promise<ApiResponse<{ total: number; resized: number; duplicates: string[] }>> {
+  return request({
+    url: `/files/datasets/${datasetId}/preprocess`,
+    method: 'post',
+    params: { resolution },
+    timeout: 600000
+  })
+}
+
+/**
+ * 提示词优化
+ */
+export function optimizePrompts(
+  datasetId: string,
+  triggerWord?: string
+): Promise<ApiResponse<{ images: ImagePrompt[] }>> {
+  return request({
+    url: `/files/datasets/${datasetId}/optimize-prompts`,
+    method: 'post',
+    params: triggerWord ? { triggerWord } : {}
+  })
+}
+
+/**
+ * 图片质量评估
+ */
+export function evaluateQuality(
+  datasetId: string,
+  generatorId: string
+): Promise<ApiResponse<Dataset>> {
+  return request({
+    url: `/files/datasets/${datasetId}/evaluate-quality`,
+    method: 'post',
+    params: { generatorId },
+    timeout: 600000
+  })
+}
+
+/**
+ * 使用指定生成器异步生成提示词
  */
 export function regeneratePrompts(
-  prompts: ImagePrompt[],
+  datasetId: string,
   generatorId: string
-): Promise<ApiResponse<{ images: ImagePrompt[] }>> {
+): Promise<ApiResponse> {
   return request({
     url: '/files/prompts/regenerate',
     method: 'post',
-    params: { generatorId },
-    data: prompts,
-    timeout: 600000
+    params: { datasetId, generatorId }
   })
 }

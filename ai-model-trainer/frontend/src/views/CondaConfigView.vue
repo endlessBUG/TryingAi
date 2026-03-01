@@ -3,12 +3,23 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>Conda 环境配置</span>
+          <span>配置中心</span>
           <el-button type="primary" :loading="saving" @click="handleSave">保存配置</el-button>
         </div>
       </template>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="140px" v-loading="loading" class="config-form">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="160px" v-loading="loading" class="config-form">
+        <el-divider content-position="left">服务地址</el-divider>
+
+        <el-form-item label="Jupyter Notebook">
+          <el-input v-model="form.jupyterUrl" placeholder="请输入 Jupyter Notebook 访问地址" />
+          <div class="field-hint">
+            用于访问 Jupyter Notebook 服务。例如：<code>http://js2.blockelite.cn:11175/</code>
+          </div>
+        </el-form-item>
+
+        <el-divider content-position="left">Conda 环境</el-divider>
+
         <el-form-item label="Conda 路径" prop="condaPath">
           <el-input v-model="form.condaPath" placeholder="请输入 conda 可执行文件的绝对路径" />
           <div class="field-hint">
@@ -30,6 +41,15 @@
           <div class="field-hint">
             国内网络安装依赖时可能无法从 GitHub 克隆仓库，填写代理地址可解决。<br/>
             例如：<code>https://ghfast.top/</code> 或 <code>https://mirror.ghproxy.com/</code>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="pip 镜像源">
+          <el-input v-model="form.pipIndexUrl" placeholder="可选，留空使用默认 PyPI" />
+          <div class="field-hint">
+            国内 pip 安装速度慢时，填写镜像源地址可大幅提速。<br/>
+            清华：<code>https://pypi.tuna.tsinghua.edu.cn/simple/</code><br/>
+            阿里：<code>https://mirrors.aliyun.com/pypi/simple/</code>
           </div>
         </el-form-item>
 
@@ -67,9 +87,11 @@ const detecting = ref(false)
 const formRef = ref<FormInstance>()
 
 const form = ref({
+  jupyterUrl: '',
   condaPath: '',
   condaInitCommand: '',
-  githubProxy: ''
+  githubProxy: '',
+  pipIndexUrl: ''
 })
 
 const rules: FormRules = {
@@ -85,9 +107,11 @@ async function loadConfig() {
   try {
     const res = await getSystemConfig()
     const data = res.data || {}
+    form.value.jupyterUrl = data['jupyter.url'] || 'http://js2.blockelite.cn:11175/'
     form.value.condaPath = data['conda.path'] || ''
     form.value.condaInitCommand = data['conda.init_command'] || ''
     form.value.githubProxy = data['github.proxy'] || ''
+    form.value.pipIndexUrl = data['pip.index.url'] || ''
   } finally {
     loading.value = false
   }
@@ -98,9 +122,11 @@ async function handleSave() {
   saving.value = true
   try {
     await saveSystemConfig({
+      'jupyter.url': form.value.jupyterUrl,
       'conda.path': form.value.condaPath,
       'conda.init_command': form.value.condaInitCommand,
-      'github.proxy': form.value.githubProxy
+      'github.proxy': form.value.githubProxy,
+      'pip.index.url': form.value.pipIndexUrl
     })
     ElMessage.success('保存成功')
     detectResult.value = null

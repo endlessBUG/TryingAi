@@ -37,7 +37,7 @@ public class FileUploadService {
         File uploadedFile = saveUploadedFile(file, uploadDir);
 
         String datasetDir = storageService.createDir(properties.getDatasetDir(), "ds");
-        List<String> extracted = FileUtil.unzip(uploadedFile, datasetDir);
+        List<String> extracted = FileUtil.extract(uploadedFile, datasetDir);
 
         List<File> imageFiles = FileUtil.filterImageFiles(extracted, properties.getSupportedFormatArray());
         String datasetId = UUID.randomUUID().toString();

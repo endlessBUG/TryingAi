@@ -40,6 +40,9 @@ public class DefaultTrainingStrategy implements TrainingStrategy {
     @Override
     public void executeTraining(TrainingTask task, Trainer trainer, TaskManagerService taskMgr) {
         String envName = resolveEnvName(trainer);
+        task.setCondaEnvName(envName);
+        taskMgr.setTaskCondaEnvName(task.getTaskId(), envName);
+
         String configPath = writeYamlConfig(task);
         task.setConfigPath(configPath);
 
@@ -48,13 +51,17 @@ public class DefaultTrainingStrategy implements TrainingStrategy {
 
         String command = "python run.py --config " + configPath;
         File workDir = new File(trainer.getPath());
+        String fullCommand = condaService.buildFullCommand(envName, command);
+        task.setExecuteCommand(fullCommand);
+        taskMgr.setTaskExecuteCommand(task.getTaskId(), fullCommand);
 
-        log.info("执行默认训练: env={}, workDir={}", envName, workDir);
+        log.info("执行默认训练: cmd={}, workDir={}", fullCommand, workDir);
         Process process = condaService.startInEnv(envName, command, workDir);
         taskMgr.setTaskProcessId(task.getTaskId(), process.pid());
 
         String logPath = properties.getLogDir() + "/training_" + task.getTaskId() + ".log";
         task.setLogPath(logPath);
+        taskMgr.setTaskLogPath(task.getTaskId(), logPath);
         readProcessOutput(process, task.getTaskId(), logPath, taskMgr);
 
         waitForProcess(process);
@@ -122,8 +129,23 @@ public class DefaultTrainingStrategy implements TrainingStrategy {
                 int total = Integer.parseInt(parts[1].trim());
                 double progress = (double) current / total * 100;
                 taskMgr.updateTaskProgress(taskId, progress, current, total);
+                parseLoss(taskId, line, current, taskMgr);
             }
         } catch (NumberFormatException ignored) {
+        }
+    }
+
+    private void parseLoss(String taskId, String line, int step, TaskManagerService taskMgr) {
+        try {
+            String lower = line.toLowerCase();
+            int idx = lower.indexOf("loss");
+            if (idx < 0) return;
+            String after = lower.substring(idx + 4).replaceFirst("[^0-9.]+", "");
+            String numStr = after.split("[^0-9.]")[0];
+            if (!numStr.isEmpty()) {
+                taskMgr.appendLoss(taskId, step, Double.parseDouble(numStr));
+            }
+        } catch (Exception ignored) {
         }
     }
 

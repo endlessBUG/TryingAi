@@ -31,13 +31,19 @@
             <el-icon><cpu /></el-icon>
             <span>训练器管理</span>
           </el-menu-item>
-          <el-menu-item index="/conda">
-            <el-icon><box /></el-icon>
-            <span>Conda 配置</span>
-          </el-menu-item>
-          <el-menu-item index="/config">
+          <el-sub-menu index="tools">
+            <template #title>
+              <el-icon><suitcase /></el-icon>
+              <span>常用工具</span>
+            </template>
+            <el-menu-item index="/comfyui">
+              <img :src="comfyuiLogo" class="comfyui-icon" alt="ComfyUI" />
+              <span>ComfyUI</span>
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item index="/settings">
             <el-icon><setting /></el-icon>
-            <span>配置管理</span>
+            <span>配置中心</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -50,12 +56,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { Setting, Upload, List, Cpu, Box, MagicStick } from '@element-plus/icons-vue'
+import { Setting, Upload, List, Cpu, MagicStick, Suitcase } from '@element-plus/icons-vue'
+import comfyuiLogo from '@/assets/comfyui-logo.svg'
+import { useSystemConfigStore } from '@/stores/systemConfig'
 
 const route = useRoute()
 const activeMenu = computed(() => route.path)
+const configStore = useSystemConfigStore()
+
+onMounted(() => configStore.load())
 </script>
 
 <style scoped>
@@ -99,5 +110,13 @@ const activeMenu = computed(() => route.path)
 
 .el-menu {
   border-right: none;
+}
+
+.comfyui-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 </style>

@@ -20,6 +20,8 @@ export interface ImagePrompt {
   width?: number
   height?: number
   fileSize?: number
+  qualityScore?: number
+  qualityReason?: string
 }
 
 // 训练配置
@@ -73,7 +75,10 @@ export interface TrainingTask {
   totalSteps?: number
   processId?: number
   errorMessage?: string
+  lossHistory?: string
   logPath?: string
+  condaEnvName?: string
+  executeCommand?: string
   createdAt?: string
   startedAt?: string
   completedAt?: string
@@ -133,8 +138,9 @@ export interface Trainer {
 
 // 生成器类型
 export enum GeneratorType {
-  LOCAL_MODEL = 'LOCAL_MODEL',
-  REMOTE_API = 'REMOTE_API'
+  COGVLM2 = 'COGVLM2',
+  JOYCAPTION = 'JOYCAPTION',
+  OPENAI_VISION = 'OPENAI_VISION'
 }
 
 // 提示词生成器
@@ -145,6 +151,7 @@ export interface PromptGenerator {
   baseUrl: string
   modelName: string
   systemPrompt?: string
+  maxTokens?: number
   enabled?: boolean
   createdAt?: string
 }

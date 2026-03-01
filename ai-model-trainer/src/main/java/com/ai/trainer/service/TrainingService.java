@@ -25,6 +25,8 @@ public class TrainingService {
     private final TaskManagerService taskManager;
     private final TrainerRepository trainerRepo;
     private final List<TrainingStrategy> strategies;
+    private final ModelDeployService modelDeployService;
+    private final TrainingEvalService trainingEvalService;
 
     @Async
     public void startTraining(String taskId) {
@@ -44,6 +46,8 @@ public class TrainingService {
             strategy.executeTraining(task, trainer, taskManager);
 
             taskManager.updateTaskStatus(taskId, TaskStatus.COMPLETED);
+            modelDeployService.deployToComfyUI(task);
+            trainingEvalService.evaluate(task);
         } catch (Exception e) {
             log.error("训练失败: {}", taskId, e);
             taskManager.setTaskError(taskId, e.getMessage());

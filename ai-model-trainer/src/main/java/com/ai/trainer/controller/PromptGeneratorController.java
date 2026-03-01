@@ -4,8 +4,10 @@ import com.ai.trainer.model.PromptGenerator;
 import com.ai.trainer.repository.PromptGeneratorRepository;
 import com.ai.trainer.service.ImageCaptionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -42,6 +44,7 @@ public class PromptGeneratorController {
         existing.setBaseUrl(generator.getBaseUrl());
         existing.setModelName(generator.getModelName());
         existing.setSystemPrompt(generator.getSystemPrompt());
+        existing.setMaxTokens(generator.getMaxTokens());
         existing.setEnabled(generator.getEnabled());
         generatorRepo.save(existing);
         return ResponseEntity.ok(Map.of("success", true, "data", existing));
@@ -54,12 +57,15 @@ public class PromptGeneratorController {
         return ResponseEntity.ok(Map.of("success", true, "message", "删除成功"));
     }
 
-    @PostMapping("/{id}/test")
-    public ResponseEntity<Map<String, Object>> test(@PathVariable String id) {
+    @PostMapping(value = "/{id}/test", consumes = {MediaType.MULTIPART_FORM_DATA_VALUE, MediaType.APPLICATION_OCTET_STREAM_VALUE, "*/*"})
+    public ResponseEntity<Map<String, Object>> test(@PathVariable String id,
+                                                    @RequestParam(required = false) MultipartFile file) {
         PromptGenerator generator = generatorRepo.findById(id).orElse(null);
         if (generator == null) return ResponseEntity.notFound().build();
         try {
-            String reply = captionService.testConnection(generator);
+            String reply = (file != null && !file.isEmpty())
+                    ? captionService.testWithImage(generator, file)
+                    : captionService.testConnection(generator);
             return ResponseEntity.ok(Map.of("success", true, "data", reply));
         } catch (Exception e) {
             return ResponseEntity.ok(Map.of("success", false, "message", e.getMessage()));

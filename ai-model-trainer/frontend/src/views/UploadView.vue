@@ -27,10 +27,11 @@
             {{ formatTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" align="center" fixed="right">
+        <el-table-column label="操作" width="320" align="center" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="handleView(row)">查看</el-button>
-            <el-button size="small" type="success" @click="handleCreateTask(row)">训练</el-button>
+            <el-button size="small" type="primary" @click="showPipelineDialog(row)">一键训练</el-button>
+            <el-button size="small" type="success" @click="goTrainingHistory(row)">训练历史</el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -47,12 +48,12 @@
         :auto-upload="false"
         :on-change="handleFileChange"
         :limit="1"
-        accept=".zip,.tar.gz"
+        accept=".zip,.tar.gz,.rar"
       >
         <el-icon class="el-icon--upload"><upload-filled /></el-icon>
         <div class="el-upload__text">拖拽压缩包到此处或<em>点击上传</em></div>
         <template #tip>
-          <div class="el-upload__tip">支持 ZIP 和 TAR.GZ 格式，最大 500MB</div>
+          <div class="el-upload__tip">支持 ZIP、RAR 和 TAR.GZ 格式，最大 500MB</div>
         </template>
       </el-upload>
 
@@ -73,36 +74,71 @@
       <div v-if="currentDataset" class="detail-header">
         <el-tag type="success">{{ currentDataset.imageCount }} 张图片</el-tag>
         <div>
+          <el-button size="small" @click="refreshDetail" :loading="detailLoading">刷新</el-button>
           <el-button size="small" @click="showGenerateDialog">生成提示词</el-button>
+          <el-button size="small" type="success" @click="showOptimizeDialog">优化提示词</el-button>
+          <el-button size="small" type="warning" @click="showQualityDialog">质量评估</el-button>
+          <el-button size="small" @click="showPreprocessDialog">预处理</el-button>
           <el-button size="small" type="primary" @click="handleSavePrompts">保存提示词</el-button>
         </div>
       </div>
 
-      <div v-loading="detailLoading" class="image-grid">
-        <div v-for="(img, idx) in currentImages" :key="idx" class="image-card">
-          <el-image
-            :src="getImageUrl(img.imageName)"
-            fit="cover"
-            :preview-src-list="previewList"
-            :initial-index="idx"
-            class="card-img"
-          />
-          <div class="card-body">
-            <el-tooltip :content="img.imageName" placement="top" :show-after="300">
-              <div class="card-name">{{ img.imageName }}</div>
-            </el-tooltip>
-            <div class="card-meta">{{ img.width }}x{{ img.height }}</div>
-            <el-tooltip
-              v-if="img.prompt"
-              :content="img.prompt"
-              placement="top"
-              :show-after="300"
-              effect="light"
-              max-width="360"
+      <div v-loading="detailLoading">
+        <div ref="gridScrollRef" class="virtual-grid-scroll">
+          <div :style="{ height: `${totalSize}px`, position: 'relative', width: '100%' }">
+            <div
+              v-for="vRow in virtualRows"
+              :key="vRow.key"
+              :style="{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${vRow.start}px)`,
+              }"
             >
-              <div class="card-prompt">{{ img.prompt }}</div>
-            </el-tooltip>
-            <div v-else class="card-prompt card-prompt--empty">暂无提示词</div>
+              <div class="image-row" :style="{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }">
+                <div
+                  v-for="img in getRowImages(vRow.index)"
+                  :key="img.imageName"
+                  class="image-card"
+                >
+                  <el-image
+                    :src="getImageUrl(img.imageName)"
+                    fit="cover"
+                    lazy
+                    :preview-src-list="previewList"
+                    :initial-index="getGlobalIndex(vRow.index, img)"
+                    class="card-img"
+                  />
+                  <div class="card-body">
+                    <el-tooltip :content="img.imageName" placement="top" :show-after="300">
+                      <div class="card-name">{{ img.imageName }}</div>
+                    </el-tooltip>
+                    <div class="card-meta">
+                      {{ img.width }}x{{ img.height }}
+                      <el-tag
+                        v-if="img.qualityScore != null"
+                        :type="img.qualityScore >= 7 ? 'success' : img.qualityScore >= 4 ? 'warning' : 'danger'"
+                        size="small"
+                        style="margin-left: 4px"
+                      >{{ img.qualityScore }}/10</el-tag>
+                    </div>
+                    <el-tooltip
+                      v-if="img.prompt"
+                      :content="img.prompt"
+                      placement="top"
+                      :show-after="300"
+                      effect="light"
+                      max-width="360"
+                    >
+                      <div class="card-prompt">{{ img.prompt }}</div>
+                    </el-tooltip>
+                    <div v-else class="card-prompt card-prompt--empty">暂无提示词</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <el-empty v-if="!detailLoading && currentImages.length === 0" description="暂无图片" />
@@ -148,24 +184,187 @@
         </el-button>
       </template>
     </el-dialog>
+    <!-- 图片预处理对话框 -->
+    <el-dialog v-model="preprocessDialogVisible" title="图片预处理" width="480px">
+      <el-alert
+        title="自动缩放超大图片到训练分辨率，去除 EXIF 信息，检测重复图片。"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+      <el-form label-width="100px">
+        <el-form-item label="目标分辨率">
+          <el-select v-model="preprocessResolution" style="width: 100%">
+            <el-option :value="512" label="512 px" />
+            <el-option :value="768" label="768 px" />
+            <el-option :value="1024" label="1024 px" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <el-alert
+        v-if="preprocessResult"
+        :title="`处理完成：共 ${preprocessResult.total} 张，缩放 ${preprocessResult.resized} 张${preprocessResult.duplicates.length > 0 ? '，发现 ' + preprocessResult.duplicates.length + ' 组重复' : ''}`"
+        :type="preprocessResult.duplicates.length > 0 ? 'warning' : 'success'"
+        :closable="false"
+        style="margin-top: 12px"
+      >
+        <div v-if="preprocessResult.duplicates.length > 0" style="margin-top: 8px; font-size: 12px; color: #909399">
+          <div v-for="d in preprocessResult.duplicates" :key="d">{{ d }}</div>
+        </div>
+      </el-alert>
+      <template #footer>
+        <el-button @click="preprocessDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="preprocessing" @click="handlePreprocess">开始预处理</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 一键训练对话框 -->
+    <el-dialog v-model="pipelineDialogVisible" title="一键训练" width="900px" top="5vh">
+      <el-alert
+        title="选择训练器后可预览并编辑 YAML 配置，确认后直接创建任务并启动训练。"
+        type="success"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+      <el-form label-width="100px">
+        <el-form-item label="数据集">
+          <el-input :model-value="pipelineDataset?.name" disabled />
+        </el-form-item>
+        <el-form-item label="训练器">
+          <el-select v-model="pipelineTrainerId" placeholder="请选择" style="width: 100%" @change="onPipelineTrainerChange">
+            <el-option
+              v-for="t in pipelineTrainers"
+              :key="t.id"
+              :label="t.name"
+              :value="t.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="基础模型">
+          <el-select
+            v-model="pipelineBaseModel"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入 HuggingFace 模型 ID"
+            style="width: 100%"
+            @change="onBaseModelChange"
+          >
+            <el-option
+              v-for="m in baseModelPresets"
+              :key="m.value"
+              :label="m.label"
+              :value="m.value"
+            />
+          </el-select>
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            选择后自动更新 YAML 中的 name_or_path，未缓存的模型会在训练前自动下载
+          </div>
+        </el-form-item>
+        <el-form-item label="触发词">
+          <el-input v-model="pipelineTriggerWord" placeholder="可选，如 ohwx、sks" clearable />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            填写后将自动注入 YAML，采样提示词中可用 [trigger] 占位符引用
+          </div>
+        </el-form-item>
+        <el-form-item v-if="pipelineYamlConfig" label="YAML 配置">
+          <YamlEditor v-model="pipelineYamlConfig" height="380px" />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            占位符 <code v-pre>&#123;&#123;DATASET_PATH&#125;&#125;</code> 已自动替换为数据集路径，可手动调整其他参数
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="pipelineDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="pipelineLoading"
+          :disabled="!pipelineTrainerId"
+          @click="handleAutoPipeline"
+        >
+          开始一键训练
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 提示词优化对话框 -->
+    <el-dialog v-model="optimizeDialogVisible" title="提示词优化" width="480px">
+      <el-alert
+        title="自动优化提示词：检测 trigger word、去重、格式统一。"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+      <el-form label-width="100px">
+        <el-form-item label="Trigger Word">
+          <el-input v-model="optimizeTriggerWord" placeholder="可选，如 sks, ohwx" />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            填写后会自动在未包含该词的提示词前添加
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="optimizeDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="optimizing" @click="handleOptimizePrompts">开始优化</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 质量评估对话框 -->
+    <el-dialog v-model="qualityDialogVisible" title="图片质量评估" width="480px">
+      <el-alert
+        title="使用视觉模型对数据集中的图片进行质量评分（1-10分），帮助筛选不适合训练的低质量图片。"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+      <el-form label-width="80px">
+        <el-form-item label="生成器">
+          <el-select v-model="qualityGeneratorId" placeholder="请选择生成器" style="width: 100%">
+            <el-option
+              v-for="g in enabledGenerators"
+              :key="g.id"
+              :label="g.name"
+              :value="g.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="qualityDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="evaluating"
+          :disabled="!qualityGeneratorId"
+          @click="handleEvaluateQuality"
+        >
+          开始评估
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, UploadFilled } from '@element-plus/icons-vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
   getDatasets, deleteDataset, uploadImageArchive,
-  getDatasetDetail, updatePrompts, regeneratePrompts
+  getDatasetDetail, updatePrompts, regeneratePrompts, evaluateQuality, optimizePrompts, preprocessImages
 } from '@/api/file'
 import { getPromptGenerators } from '@/api/promptGenerator'
-import type { Dataset, ImagePrompt, PromptGenerator } from '@/types'
-import { useTaskStore } from '@/stores/task'
+import { autoPipeline } from '@/api/training'
+import { getTrainers } from '@/api/trainer'
+import YamlEditor from '@/components/YamlEditor.vue'
+import type { Dataset, ImagePrompt, PromptGenerator, Trainer } from '@/types'
 
 const router = useRouter()
-const taskStore = useTaskStore()
 
 // 列表相关
 const datasets = ref<Dataset[]>([])
@@ -185,11 +384,98 @@ const detailLoading = ref(false)
 const currentDataset = ref<Dataset | null>(null)
 const currentImages = ref<ImagePrompt[]>([])
 
+// 虚拟滚动相关
+const CARD_MIN_WIDTH = 140
+const CARD_GAP = 12
+const ROW_HEIGHT = 240
+const gridScrollRef = ref<HTMLElement | null>(null)
+const columnCount = ref(4)
+let resizeObserver: ResizeObserver | null = null
+
+const rowCount = computed(() => Math.ceil(currentImages.value.length / columnCount.value))
+
+const rowVirtualizer = useVirtualizer(computed(() => ({
+  count: rowCount.value,
+  getScrollElement: () => gridScrollRef.value,
+  estimateSize: () => ROW_HEIGHT,
+  overscan: 3,
+})))
+
+const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems())
+const totalSize = computed(() => rowVirtualizer.value.getTotalSize())
+
+const getRowImages = (rowIndex: number) => {
+  const start = rowIndex * columnCount.value
+  return currentImages.value.slice(start, start + columnCount.value)
+}
+
+const getGlobalIndex = (rowIndex: number, img: ImagePrompt) => {
+  return rowIndex * columnCount.value + getRowImages(rowIndex).indexOf(img)
+}
+
+const updateColumnCount = () => {
+  if (!gridScrollRef.value) return
+  const width = gridScrollRef.value.clientWidth
+  columnCount.value = Math.max(1, Math.floor((width + CARD_GAP) / (CARD_MIN_WIDTH + CARD_GAP)))
+}
+
+watch(detailVisible, (visible) => {
+  if (visible) {
+    setTimeout(() => {
+      updateColumnCount()
+      if (gridScrollRef.value && !resizeObserver) {
+        resizeObserver = new ResizeObserver(updateColumnCount)
+        resizeObserver.observe(gridScrollRef.value)
+      }
+    }, 100)
+  } else {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+  }
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+})
+
 // 生成器相关
 const generateDialogVisible = ref(false)
 const generatorList = ref<PromptGenerator[]>([])
 const selectedGeneratorId = ref('')
 const generating = ref(false)
+
+// 一键训练相关
+const pipelineDialogVisible = ref(false)
+const pipelineDataset = ref<Dataset | null>(null)
+const pipelineTrainerId = ref('')
+const pipelineTrainers = ref<Trainer[]>([])
+const pipelineLoading = ref(false)
+const pipelineYamlConfig = ref('')
+const pipelineTriggerWord = ref('')
+const pipelineBaseModel = ref('')
+
+const baseModelPresets = [
+  { label: 'Wan 2.2 14B (T2V)', value: 'ai-toolkit/Wan2.2-T2V-A14B-Diffusers-bf16' },
+  { label: 'Wan 2.2 14B (I2V)', value: 'ai-toolkit/Wan2.2-I2V-14B-480P-Diffusers' },
+  { label: 'FLUX.1 Dev', value: 'black-forest-labs/FLUX.1-dev' },
+  { label: 'FLUX.1 Schnell', value: 'black-forest-labs/FLUX.1-schnell' },
+]
+
+// 图片预处理相关
+const preprocessDialogVisible = ref(false)
+const preprocessResolution = ref(512)
+const preprocessing = ref(false)
+const preprocessResult = ref<{ total: number; resized: number; duplicates: string[] } | null>(null)
+
+// 提示词优化相关
+const optimizeDialogVisible = ref(false)
+const optimizeTriggerWord = ref('')
+const optimizing = ref(false)
+
+// 质量评估相关
+const qualityDialogVisible = ref(false)
+const qualityGeneratorId = ref('')
+const evaluating = ref(false)
 
 const enabledGenerators = computed(() =>
   generatorList.value.filter(g => g.enabled !== false)
@@ -267,6 +553,10 @@ const handleView = async (row: Dataset) => {
   }
 }
 
+const goTrainingHistory = (row: Dataset) => {
+  router.push({ path: '/tasks', query: { datasetName: row.name } })
+}
+
 const handleDelete = async (row: Dataset) => {
   await ElMessageBox.confirm(`确定要删除数据集「${row.name}」吗？`, '提示', {
     confirmButtonText: '确定',
@@ -280,15 +570,6 @@ const handleDelete = async (row: Dataset) => {
   } catch {
     // error handled by request interceptor
   }
-}
-
-const handleCreateTask = (row: Dataset) => {
-  taskStore.setDatasetInfo({
-    datasetPath: row.datasetPath,
-    imageCount: row.imageCount,
-    images: row.images ?? []
-  })
-  router.push('/tasks/create')
 }
 
 const handleSavePrompts = async () => {
@@ -316,19 +597,174 @@ const loadGenerators = async () => {
 }
 
 const handleRegeneratePrompts = async () => {
-  if (!selectedGeneratorId.value) return
+  if (!selectedGeneratorId.value || !currentDataset.value) return
   generating.value = true
   try {
-    const res = await regeneratePrompts(currentImages.value, selectedGeneratorId.value)
-    if (res.data?.images) {
-      currentImages.value = res.data.images
-      ElMessage.success('提示词生成成功')
-    }
+    await regeneratePrompts(currentDataset.value.id, selectedGeneratorId.value)
+    ElMessage.success('提示词生成已开始，请稍后点击刷新查看进度')
     generateDialogVisible.value = false
   } catch (e) {
     console.error(e)
   } finally {
     generating.value = false
+  }
+}
+
+const refreshDetail = async () => {
+  if (!currentDataset.value) return
+  detailLoading.value = true
+  try {
+    const res = await getDatasetDetail(currentDataset.value.id)
+    currentImages.value = res.data?.images ?? []
+  } catch {
+    // error handled by request interceptor
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+const showPreprocessDialog = () => {
+  preprocessResult.value = null
+  preprocessResolution.value = 512
+  preprocessDialogVisible.value = true
+}
+
+const handlePreprocess = async () => {
+  if (!currentDataset.value) return
+  preprocessing.value = true
+  try {
+    const res = await preprocessImages(currentDataset.value.id, preprocessResolution.value)
+    preprocessResult.value = res.data || null
+    // 刷新图片列表
+    const detail = await getDatasetDetail(currentDataset.value.id)
+    currentImages.value = detail.data?.images ?? []
+  } catch (e) {
+    console.error(e)
+  } finally {
+    preprocessing.value = false
+  }
+}
+
+const showPipelineDialog = async (row: Dataset) => {
+  pipelineDataset.value = row
+  pipelineTrainerId.value = ''
+  pipelineYamlConfig.value = ''
+  pipelineTriggerWord.value = row.name || ''
+  pipelineBaseModel.value = ''
+  await loadPipelineTrainers()
+  pipelineDialogVisible.value = true
+}
+
+const loadPipelineTrainers = async () => {
+  try {
+    const res = await getTrainers()
+    pipelineTrainers.value = res.data ?? []
+  } catch {
+    pipelineTrainers.value = []
+  }
+}
+
+const onPipelineTrainerChange = (trainerId: string) => {
+  const trainer = pipelineTrainers.value.find(t => t.id === trainerId)
+  if (!trainer?.defaultYamlConfig) {
+    pipelineYamlConfig.value = ''
+    pipelineBaseModel.value = ''
+    return
+  }
+  const dsPath = pipelineDataset.value?.datasetPath || ''
+  pipelineYamlConfig.value = trainer.defaultYamlConfig.replace(/\{\{DATASET_PATH}}/g, dsPath)
+  pipelineBaseModel.value = extractNameOrPath(pipelineYamlConfig.value)
+  applyTriggerWord()
+}
+
+const extractNameOrPath = (yaml: string): string => {
+  const match = yaml.match(/name_or_path:\s*"?([^"\n]+)"?/)
+  return match ? match[1].trim() : ''
+}
+
+const onBaseModelChange = (modelId: string) => {
+  if (!pipelineYamlConfig.value || !modelId) return
+  pipelineYamlConfig.value = pipelineYamlConfig.value.replace(
+    /^(\s*name_or_path:\s*)"?[^"\n]*"?/m,
+    `$1"${modelId}"`
+  )
+}
+
+const applyTriggerWord = () => {
+  if (!pipelineYamlConfig.value) return
+  let yaml = pipelineYamlConfig.value.replace(/^[ \t]*trigger_word:.*\n?/m, '')
+  const word = pipelineTriggerWord.value.trim()
+  if (word) {
+    yaml = yaml.replace(
+      /^([ \t]*)(device:.*\n)/m,
+      `$1$2$1trigger_word: "${word}"\n`
+    )
+  }
+  pipelineYamlConfig.value = yaml
+}
+
+watch(pipelineTriggerWord, applyTriggerWord)
+
+const handleAutoPipeline = async () => {
+  if (!pipelineDataset.value || !pipelineTrainerId.value) return
+  pipelineLoading.value = true
+  try {
+    await autoPipeline(
+      pipelineDataset.value.id,
+      pipelineTrainerId.value,
+      pipelineYamlConfig.value || undefined
+    )
+    ElMessage.success('一键训练流水线已启动，请在任务列表查看进度')
+    pipelineDialogVisible.value = false
+  } catch (e) {
+    console.error(e)
+  } finally {
+    pipelineLoading.value = false
+  }
+}
+
+const showOptimizeDialog = () => {
+  optimizeTriggerWord.value = ''
+  optimizeDialogVisible.value = true
+}
+
+const handleOptimizePrompts = async () => {
+  if (!currentDataset.value) return
+  optimizing.value = true
+  try {
+    const res = await optimizePrompts(currentDataset.value.id, optimizeTriggerWord.value || undefined)
+    if (res.data?.images) {
+      currentImages.value = res.data.images
+    }
+    ElMessage.success('提示词优化完成')
+    optimizeDialogVisible.value = false
+  } catch (e) {
+    console.error(e)
+  } finally {
+    optimizing.value = false
+  }
+}
+
+const showQualityDialog = async () => {
+  await loadGenerators()
+  qualityGeneratorId.value = ''
+  qualityDialogVisible.value = true
+}
+
+const handleEvaluateQuality = async () => {
+  if (!qualityGeneratorId.value || !currentDataset.value) return
+  evaluating.value = true
+  try {
+    const res = await evaluateQuality(currentDataset.value.id, qualityGeneratorId.value)
+    if (res.data?.images) {
+      currentImages.value = res.data.images
+    }
+    ElMessage.success('质量评估完成')
+    qualityDialogVisible.value = false
+  } catch (e) {
+    console.error(e)
+  } finally {
+    evaluating.value = false
   }
 }
 
@@ -377,9 +813,12 @@ onMounted(loadDatasets)
   align-items: center;
   margin-bottom: 16px;
 }
-.image-grid {
+.virtual-grid-scroll {
+  height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+.image-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 12px;
 }
 .image-card {

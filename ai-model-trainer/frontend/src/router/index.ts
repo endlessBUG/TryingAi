@@ -39,16 +39,16 @@ const router = createRouter({
           meta: { title: '训练器管理' }
         },
         {
-          path: 'conda',
-          name: 'Conda',
-          component: () => import('@/views/CondaConfigView.vue'),
-          meta: { title: 'Conda 配置' }
+          path: 'comfyui',
+          name: 'ComfyUI',
+          component: () => import('@/views/ComfyUIView.vue'),
+          meta: { title: 'ComfyUI' }
         },
         {
-          path: 'config',
-          name: 'Config',
-          component: () => import('@/views/ConfigView.vue'),
-          meta: { title: '配置管理' }
+          path: 'settings',
+          name: 'Settings',
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { title: '配置中心' }
         }
       ]
     }

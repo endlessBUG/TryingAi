@@ -41,6 +41,11 @@ public class TrainingTask {
     @Column(length = 2000)
     private String errorMessage;
     private String logPath;
+    private String condaEnvName;
+    @Column(length = 2000)
+    private String executeCommand;
+    @Column(length = 50000)
+    private String lossHistory;
     private LocalDateTime createdAt;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
