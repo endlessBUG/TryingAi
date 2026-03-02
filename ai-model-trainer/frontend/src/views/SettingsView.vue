@@ -71,6 +71,14 @@
             阿里：<code>https://mirrors.aliyun.com/pypi/simple/</code>
           </div>
         </el-form-item>
+
+        <el-form-item label="HuggingFace 镜像">
+          <el-input v-model="form.hfMirror" placeholder="默认: https://hf-mirror.com" clearable />
+          <div class="field-hint">
+            训练时从 HuggingFace 下载 Accuracy Recovery Adapter 等资源，国内网络可配置镜像加速。<br/>
+            留空使用默认 <code>https://hf-mirror.com</code>，填 <code>off</code> 可禁用镜像
+          </div>
+        </el-form-item>
       </el-form>
     </el-card>
   </div>
@@ -94,6 +102,7 @@ const form = ref({
   condaInitCommand: '',
   githubProxy: '',
   pipIndexUrl: '',
+  hfMirror: '',
 })
 
 const rules: FormRules = {}
@@ -109,6 +118,7 @@ function fillForm() {
   form.value.condaInitCommand = configStore.get('conda.init_command')
   form.value.githubProxy = configStore.get('github.proxy')
   form.value.pipIndexUrl = configStore.get('pip.index.url')
+  form.value.hfMirror = configStore.get('hf.mirror')
 }
 
 async function handleSave() {
@@ -122,6 +132,7 @@ async function handleSave() {
       'conda.init_command': form.value.condaInitCommand,
       'github.proxy': form.value.githubProxy,
       'pip.index.url': form.value.pipIndexUrl,
+      'hf.mirror': form.value.hfMirror,
     })
     ElMessage.success('保存成功')
     detectResult.value = null

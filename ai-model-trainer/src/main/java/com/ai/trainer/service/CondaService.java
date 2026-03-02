@@ -10,6 +10,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -147,11 +148,27 @@ public class CondaService {
         try {
             ProcessBuilder pb = new ProcessBuilder(buildRunInEnvArgs(envName, command));
             if (workDir != null) pb.directory(workDir);
+            applyHfMirrorEnv(pb.environment());
             pb.redirectErrorStream(true);
             return pb.start();
         } catch (Exception e) {
             throw new TrainingException("启动进程失败: " + e.getMessage());
         }
+    }
+
+    private void applyHfMirrorEnv(Map<String, String> env) {
+        String mirror = getHfMirror();
+        if (mirror != null && !mirror.isBlank()) {
+            env.put("HF_ENDPOINT", mirror.replaceAll("/+$", ""));
+            log.debug("已设置 HuggingFace 镜像: HF_ENDPOINT={}", mirror);
+        }
+    }
+
+    private String getHfMirror() {
+        String v = configRepo.findById("hf.mirror").map(c -> c.getConfigValue()).orElse(null);
+        if (v != null && !v.isBlank() && !"off".equalsIgnoreCase(v.trim())) return v.trim();
+        if (v != null && "off".equalsIgnoreCase(v.trim())) return null;
+        return "https://hf-mirror.com";
     }
 
     private String[] buildRunInEnvArgs(String envName, String command) {

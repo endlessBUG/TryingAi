@@ -100,6 +100,7 @@ config:
           caption_dropout_rate: 0.05
           num_frames: 1
           resolution: [512, 768, 1024]
+          num_workers: 0
       train:
         batch_size: 1
         steps: 2000
