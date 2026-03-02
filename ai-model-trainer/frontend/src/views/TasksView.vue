@@ -272,11 +272,12 @@
     </el-dialog>
 
     <!-- 日志查看弹窗 -->
-    <el-dialog v-model="logVisible" title="训练日志" width="900px" top="5vh">
-      <div v-loading="logLoading" class="log-viewer">
+    <el-dialog v-model="logVisible" title="训练日志" width="900px" top="5vh" @close="closeLogViewer">
+      <div v-loading="logLoading" class="log-viewer" ref="logViewerRef">
         <pre>{{ logContent }}</pre>
       </div>
       <template #footer>
+        <el-checkbox v-model="logAutoScroll" style="margin-right: auto">自动滚动</el-checkbox>
         <el-button @click="logVisible = false">关闭</el-button>
         <el-button type="primary" @click="refreshLog">刷新</el-button>
       </template>
@@ -313,7 +314,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Document, Refresh, CircleCheck, CircleClose } from '@element-plus/icons-vue'
@@ -376,6 +377,9 @@ const currentTask = ref<TrainingTask | null>(null)
 const logVisible = ref(false)
 const logContent = ref('')
 const logLoading = ref(false)
+const logAutoScroll = ref(true)
+const logViewerRef = ref<HTMLElement | null>(null)
+let logEventSource: EventSource | null = null
 
 // 选择对比
 const selectedTasks = ref<TrainingTask[]>([])
@@ -386,10 +390,47 @@ const handleSelectionChange = (val: TrainingTask[]) => {
   selectedTasks.value = val
 }
 
+const scrollLogToBottom = () => {
+  if (!logAutoScroll.value || !logViewerRef.value) return
+  nextTick(() => {
+    logViewerRef.value!.scrollTop = logViewerRef.value!.scrollHeight
+  })
+}
+
 const openLogViewer = async () => {
   if (!currentTask.value?.taskId) return
   logVisible.value = true
   await fetchLog(currentTask.value.taskId)
+  if (currentTask.value?.status === 'RUNNING') {
+    startLogStream(currentTask.value.taskId)
+  }
+}
+
+const startLogStream = (taskId: string) => {
+  closeLogStream()
+  logEventSource = new EventSource(`/api/training/tasks/${taskId}/log/stream`)
+  logEventSource.onmessage = (event) => {
+    logContent.value += event.data + '\n'
+    scrollLogToBottom()
+  }
+  logEventSource.addEventListener('done', () => {
+    closeLogStream()
+  })
+  logEventSource.onerror = () => {
+    closeLogStream()
+  }
+}
+
+const closeLogStream = () => {
+  if (logEventSource) {
+    logEventSource.close()
+    logEventSource = null
+  }
+}
+
+const closeLogViewer = () => {
+  closeLogStream()
+  logVisible.value = false
 }
 
 const refreshLog = async () => {
@@ -402,6 +443,7 @@ const fetchLog = async (taskId: string) => {
   try {
     const res = await getTaskLog(taskId)
     logContent.value = (res as any).content || '暂无日志'
+    scrollLogToBottom()
   } catch {
     logContent.value = '读取日志失败'
   } finally {
@@ -645,7 +687,10 @@ onMounted(() => {
   loadTasks()
   refreshTimer = setInterval(loadTasks, 5000) as unknown as number
 })
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  closeLogStream()
+})
 </script>
 
 <style scoped>

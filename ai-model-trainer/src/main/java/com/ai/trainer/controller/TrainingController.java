@@ -8,12 +8,15 @@ import com.ai.trainer.repository.TrainerRepository;
 import com.ai.trainer.service.AutoPipelineService;
 import com.ai.trainer.service.FileUploadService;
 import com.ai.trainer.service.HyperParamRecommendService;
+import com.ai.trainer.service.LogBroadcastService;
 import com.ai.trainer.service.TaskManagerService;
 import com.ai.trainer.service.TrainingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -33,6 +36,7 @@ public class TrainingController {
     private final TrainerRepository trainerRepo;
     private final HyperParamRecommendService hyperParamService;
     private final AutoPipelineService autoPipelineService;
+    private final LogBroadcastService logBroadcastService;
 
     @PostMapping("/tasks")
     public ResponseEntity<Map<String, Object>> createTask(@RequestBody CreateTaskRequest req) {
@@ -135,6 +139,13 @@ public class TrainingController {
         } catch (Exception e) {
             return ResponseEntity.ok(Map.of("success", false, "content", "读取日志失败: " + e.getMessage()));
         }
+    }
+
+    @GetMapping(value = "/tasks/{id}/log/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamTaskLog(@PathVariable String id) {
+        SseEmitter emitter = new SseEmitter(0L);
+        logBroadcastService.subscribe(id, emitter);
+        return emitter;
     }
 
     @DeleteMapping("/tasks/{id}")

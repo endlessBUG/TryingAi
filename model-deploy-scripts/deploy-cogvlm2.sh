@@ -2,7 +2,7 @@
 # ============================================================
 # CogVLM2 模型部署脚本（基于官方 openai_api_demo.py）
 # 来源: https://github.com/zai-org/CogVLM2/tree/main/basic_demo
-# 模型存放: ~/tryingai/models/cogvlm2/
+# 模型存放: ~/ai/trainer/models/cogvlm2/
 # API 地址: http://<host>:7000/v1/chat/completions
 # ============================================================
 
@@ -10,15 +10,15 @@ set -e
 
 # -------------------- 配置 --------------------
 MODEL_ID="THUDM/cogvlm2-llama3-chat-19B"
-MODEL_DIR="$HOME/tryingai/models/cogvlm2"
-MODEL_FILES_DIR="$HOME/tryingai/models/cogvlm2/model_files"
+MODEL_DIR="$HOME/ai/trainer/models/cogvlm2"
+MODEL_FILES_DIR="$HOME/ai/trainer/models/cogvlm2/model_files"
 CONDA_ENV_NAME="cogvlm2"
 PYTHON_VERSION="3.10"
-DEMO_DIR="$HOME/tryingai/models/cogvlm2/basic_demo"
+DEMO_DIR="$HOME/ai/trainer/models/cogvlm2/basic_demo"
 API_HOST="0.0.0.0"
 API_PORT=8803
-LOG_FILE="$HOME/tryingai/models/cogvlm2/server.log"
-PID_FILE="$HOME/tryingai/models/cogvlm2/server.pid"
+LOG_FILE="$HOME/ai/trainer/models/cogvlm2/server.log"
+PID_FILE="$HOME/ai/trainer/models/cogvlm2/server.pid"
 # 量化选项: 0=不量化(需要约40GB显存), 4=4bit(约13GB), 8=8bit(约20GB)
 QUANT=4
 # pip 国内镜像源（清华源），海外服务器可注释掉此行

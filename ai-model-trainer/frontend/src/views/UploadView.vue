@@ -363,6 +363,7 @@ import { autoPipeline } from '@/api/training'
 import { getTrainers } from '@/api/trainer'
 import YamlEditor from '@/components/YamlEditor.vue'
 import type { Dataset, ImagePrompt, PromptGenerator, Trainer } from '@/types'
+import { useSystemConfigStore } from '@/stores/systemConfig'
 
 const router = useRouter()
 
@@ -454,12 +455,19 @@ const pipelineYamlConfig = ref('')
 const pipelineTriggerWord = ref('')
 const pipelineBaseModel = ref('')
 
-const baseModelPresets = [
-  { label: 'Wan 2.2 14B (T2V)', value: 'ai-toolkit/Wan2.2-T2V-A14B-Diffusers-bf16' },
-  { label: 'Wan 2.2 14B (I2V)', value: 'ai-toolkit/Wan2.2-I2V-14B-480P-Diffusers' },
-  { label: 'FLUX.1 Dev', value: 'black-forest-labs/FLUX.1-dev' },
-  { label: 'FLUX.1 Schnell', value: 'black-forest-labs/FLUX.1-schnell' },
+const sysConfig = useSystemConfigStore()
+const modelDir = computed(() => sysConfig.get('model.dir', '/root/ai/trainer/models'))
+
+const baseModelRaw = [
+  { label: 'Wan 2.2 14B (T2V)', id: 'ai-toolkit/Wan2.2-T2V-A14B-Diffusers-bf16', name: 'Wan2.2-T2V-A14B-Diffusers-bf16' },
+  { label: 'Wan 2.2 14B (I2V)', id: 'ai-toolkit/Wan2.2-I2V-14B-480P-Diffusers', name: 'Wan2.2-I2V-14B-480P-Diffusers' },
+  { label: 'FLUX.1 Dev', id: 'black-forest-labs/FLUX.1-dev', name: 'FLUX.1-dev' },
+  { label: 'FLUX.1 Schnell', id: 'black-forest-labs/FLUX.1-schnell', name: 'FLUX.1-schnell' },
 ]
+
+const baseModelPresets = computed(() =>
+  baseModelRaw.map(m => ({ label: m.label, value: `${modelDir.value}/${m.name}` }))
+)
 
 // 图片预处理相关
 const preprocessDialogVisible = ref(false)
@@ -651,6 +659,7 @@ const showPipelineDialog = async (row: Dataset) => {
   pipelineYamlConfig.value = ''
   pipelineTriggerWord.value = row.name || ''
   pipelineBaseModel.value = ''
+  if (!sysConfig.loaded.value) await sysConfig.load()
   await loadPipelineTrainers()
   pipelineDialogVisible.value = true
 }
@@ -673,13 +682,27 @@ const onPipelineTrainerChange = (trainerId: string) => {
   }
   const dsPath = pipelineDataset.value?.datasetPath || ''
   pipelineYamlConfig.value = trainer.defaultYamlConfig.replace(/\{\{DATASET_PATH}}/g, dsPath)
-  pipelineBaseModel.value = extractNameOrPath(pipelineYamlConfig.value)
+  const extracted = extractNameOrPath(pipelineYamlConfig.value)
+  const absolutePath = modelIdToAbsolutePath(extracted)
+  pipelineBaseModel.value = absolutePath || extracted
+  if (absolutePath && absolutePath !== extracted) {
+    pipelineYamlConfig.value = pipelineYamlConfig.value.replace(
+      /^(\s*name_or_path:\s*)"?[^"\n]*"?/m,
+      `$1"${absolutePath}"`
+    )
+  }
   applyTriggerWord()
 }
 
 const extractNameOrPath = (yaml: string): string => {
   const match = yaml.match(/name_or_path:\s*"?([^"\n]+)"?/)
   return match ? match[1].trim() : ''
+}
+
+const modelIdToAbsolutePath = (modelId: string): string => {
+  if (!modelId) return ''
+  const preset = baseModelRaw.find(m => m.id === modelId || modelId === m.name || modelId.endsWith('/' + m.name))
+  return preset ? `${modelDir.value}/${preset.name}` : modelId
 }
 
 const onBaseModelChange = (modelId: string) => {
@@ -789,7 +812,10 @@ const formatTime = (time?: string): string => {
   return new Date(time).toLocaleString('zh-CN')
 }
 
-onMounted(loadDatasets)
+onMounted(async () => {
+  if (!sysConfig.loaded.value) await sysConfig.load()
+  loadDatasets()
+})
 </script>
 
 <style scoped>

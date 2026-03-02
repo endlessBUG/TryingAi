@@ -116,6 +116,21 @@ server {
     gzip_min_length 1k;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
 
+    # SSE log stream — must be before generic /api/ to take priority
+    location ~ ^/api/training/tasks/.+/log/stream\$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Connection '';
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400s;
+        add_header X-Accel-Buffering no;
+        chunked_transfer_encoding off;
+    }
+
     # ^~ ensures /api/ takes priority over regex location blocks below
     location ^~ /api/ {
         proxy_pass http://127.0.0.1:8080;
@@ -227,6 +242,17 @@ print_summary() {
     echo -e "${GREEN}========================================${NC}"
 }
 
+# -------------------- enable/disable autostart --------------------
+enable_autostart() {
+    systemctl enable nginx
+    info "Nginx 开机自启已启用"
+}
+
+disable_autostart() {
+    systemctl disable nginx
+    info "Nginx 开机自启已禁用"
+}
+
 # -------------------- main --------------------
 main() {
     echo ""
@@ -245,4 +271,14 @@ main() {
     print_summary
 }
 
-main "$@"
+case "${1:-}" in
+    enable-autostart)
+        enable_autostart
+        ;;
+    disable-autostart)
+        disable_autostart
+        ;;
+    *)
+        main "$@"
+        ;;
+esac

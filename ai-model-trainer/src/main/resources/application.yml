@@ -7,7 +7,7 @@ spring:
       max-file-size: 500MB
       max-request-size: 500MB
   datasource:
-    url: jdbc:sqlite:${user.home}/tryingai/trainer.db
+    url: jdbc:sqlite:${user.home}/ai/trainer/trainer.db
     driver-class-name: org.sqlite.JDBC
   jpa:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
@@ -21,14 +21,16 @@ storage:
 trainer:
   ai-toolkit-path: ./ai-toolkit
   python-path: python
-  data-dir: ${user.home}/tryingai
-  upload-dir: ${user.home}/tryingai/uploads
-  dataset-dir: ${user.home}/tryingai/datasets
-  output-dir: ${user.home}/tryingai/outputs
-  config-dir: ${user.home}/tryingai/configs
-  log-dir: ${user.home}/tryingai/logs
+  data-dir: ${user.home}/ai/trainer
+  upload-dir: ${user.home}/ai/trainer/uploads
+  dataset-dir: ${user.home}/ai/trainer/datasets
+  output-dir: ${user.home}/ai/trainer/outputs
+  config-dir: ${user.home}/ai/trainer/configs
+  log-dir: ${user.home}/ai/trainer/logs
+  model-dir: ${user.home}/ai/trainer/models
   supported-formats: jpg,jpeg,png,webp,bmp
   max-concurrent-tasks: 2
+  default-conda-env: wan22
 
 logging:
   level:

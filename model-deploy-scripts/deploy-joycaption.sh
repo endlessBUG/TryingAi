@@ -2,7 +2,8 @@
 # ============================================================
 # JoyCaption Beta One 模型部署脚本
 # 模型: fancyfeast/llama-joycaption-beta-one-hf-llava
-# 模型存放: ~/tryingai/models/joycaption/
+# 模型来源: https://www.modelscope.cn/models/fancyfeast/llama-joycaption-beta-one-hf-llava
+# 模型存放: ~/ai/trainer/models/joycaption/
 # API 地址: http://<host>:8804/v1/chat/completions
 # ============================================================
 
@@ -10,8 +11,8 @@ set -e
 
 # -------------------- 配置 --------------------
 MODEL_ID="fancyfeast/llama-joycaption-beta-one-hf-llava"
-MODEL_DIR="$HOME/tryingai/models/joycaption"
-MODEL_FILES_DIR="$HOME/tryingai/models/joycaption/model_files"
+MODEL_DIR="$HOME/ai/trainer/models/joycaption"
+MODEL_FILES_DIR="$HOME/ai/trainer/models/joycaption/model_files"
 CONDA_ENV_NAME="joycaption"
 PYTHON_VERSION="3.10"
 SERVER_SCRIPT="$MODEL_DIR/api_server.py"
@@ -155,18 +156,16 @@ install_quant_deps() {
 # -------------------- 下载模型 --------------------
 download_model() {
     info "下载/续传模型 $MODEL_ID 到 $MODEL_FILES_DIR ..."
-    info "  镜像源: hf-mirror.com，并发线程: 8"
+    info "  镜像源: modelscope.cn，并发线程: 8"
+
+    conda_run pip install modelscope $PIP_MIRROR --root-user-action=ignore -q
 
     conda_run python3 - <<EOF
-import os
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-from huggingface_hub import snapshot_download
+from modelscope.hub.snapshot_download import snapshot_download
 snapshot_download(
-    repo_id='$MODEL_ID',
+    model_id='$MODEL_ID',
     local_dir='$MODEL_FILES_DIR',
-    resume_download=True,
     max_workers=8,
-    local_dir_use_symlinks=False,
 )
 print('模型下载完成')
 EOF
@@ -236,20 +235,32 @@ def build_quant_config(quant: int) -> Optional[BitsAndBytesConfig]:
 
 
 def _fix_vision_tower_out_proj(model):
-    """https://github.com/fpgaminer/joycaption/issues/3#issuecomment-2619253277"""
-    attn = model.vision_tower.vision_model.head.attention
-    attn.out_proj = torch.nn.Linear(
-        attn.embed_dim, attn.embed_dim,
-        device=model.device, dtype=torch.bfloat16,
+    """https://github.com/fpgaminer/joycaption/issues/3#issuecomment-2619253277
+    transformers>=4.46 将 vision_tower 移至 model.model.vision_tower，兼容两种结构。
+    """
+    vision_tower = (
+        getattr(model, 'vision_tower', None)
+        or getattr(getattr(model, 'model', None), 'vision_tower', None)
     )
-    print("[INFO] 已修复 vision_tower out_proj 量化兼容问题")
+    if vision_tower is None:
+        print("[WARN] 未找到 vision_tower，跳过 out_proj 修复")
+        return
+    try:
+        attn = vision_tower.vision_model.head.attention
+        attn.out_proj = torch.nn.Linear(
+            attn.embed_dim, attn.embed_dim,
+            device=model.device, dtype=torch.bfloat16,
+        )
+        print("[INFO] 已修复 vision_tower out_proj 量化兼容问题")
+    except AttributeError as e:
+        print(f"[WARN] vision_tower 结构变化，跳过 out_proj 修复: {e}")
 
 
 def load_model(model_path: str, quant: int):
     global _model, _processor
     print(f"[INFO] 加载模型: {model_path}，量化: {quant}bit" if quant else f"[INFO] 加载模型: {model_path}，bfloat16")
 
-    _processor = AutoProcessor.from_pretrained(model_path)
+    _processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
 
     quant_cfg = build_quant_config(quant)
     load_kwargs = dict(
@@ -579,9 +590,8 @@ EOF
 # -------------------- 开机自启（systemd） --------------------
 enable_autostart() {
     check_conda_env
-    local ENV_PYTHON
-    ENV_PYTHON=$(get_env_python)
-    [ -f "$ENV_PYTHON" ] || error "未找到 Python: $ENV_PYTHON，请先执行 install"
+    local CONDA_BASE
+    CONDA_BASE=$(conda info --base)
 
     local SERVICE_FILE="/etc/systemd/system/joycaption.service"
     local QUANT_PARAM=""
@@ -592,12 +602,14 @@ enable_autostart() {
 [Unit]
 Description=JoyCaption Beta One API Service
 After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
 User=root
-Environment=PATH=$(dirname "$ENV_PYTHON"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
-ExecStart=$ENV_PYTHON $SERVER_SCRIPT --model-path $MODEL_FILES_DIR --host $API_HOST --port $API_PORT $QUANT_PARAM
+Environment=PATH=$CONDA_BASE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=$CONDA_BASE/bin/conda run --no-capture-output -n $CONDA_ENV_NAME python3 $SERVER_SCRIPT --model-path $MODEL_FILES_DIR --host $API_HOST --port $API_PORT $QUANT_PARAM
 Restart=on-failure
 RestartSec=15
 StandardOutput=append:$LOG_FILE
@@ -610,6 +622,7 @@ EOF
     systemctl daemon-reload
     systemctl enable joycaption.service
     info "开机自启已启用"
+    info "  立即启动: systemctl start joycaption"
     info "  手动控制: systemctl start/stop/status joycaption"
 }
 

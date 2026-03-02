@@ -13,9 +13,9 @@ PYTHON_VERSION="3.10"
 JUPYTER_HOST="0.0.0.0"
 JUPYTER_PORT=8805
 NOTEBOOK_DIR="/root"
-LOG_FILE="$HOME/tryingai/jupyter/server.log"
-PID_FILE="$HOME/tryingai/jupyter/server.pid"
-CONFIG_FILE="$HOME/tryingai/jupyter/jupyter_notebook_config.py"
+LOG_FILE="$HOME/ai/trainer/jupyter/server.log"
+PID_FILE="$HOME/ai/trainer/jupyter/server.pid"
+CONFIG_FILE="$HOME/ai/trainer/jupyter/jupyter_notebook_config.py"
 # pip 国内镜像源（清华源），海外服务器可注释掉此行
 PIP_MIRROR="-i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --trusted-host mirrors.tuna.tsinghua.edu.cn"
 
@@ -191,6 +191,8 @@ enable_autostart() {
 [Unit]
 Description=Jupyter Notebook Service
 After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -209,6 +211,7 @@ EOF
     systemctl daemon-reload
     systemctl enable jupyter.service
     info "开机自启已启用"
+    info "  立即启动: systemctl start jupyter"
     info "  手动启停: systemctl start/stop jupyter"
     info "  查看状态: systemctl status jupyter"
 }

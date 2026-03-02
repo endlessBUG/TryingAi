@@ -16,8 +16,10 @@ public class TrainerProperties {
     private String outputDir = System.getProperty("user.home") + "/tryingai/outputs";
     private String configDir = System.getProperty("user.home") + "/tryingai/configs";
     private String logDir = System.getProperty("user.home") + "/tryingai/logs";
+    private String modelDir = System.getProperty("user.home") + "/tryingai/models";
     private String supportedFormats = "jpg,jpeg,png,webp,bmp";
     private int maxConcurrentTasks = 2;
+    private String defaultCondaEnv = "wan22";
 
     public String[] getSupportedFormatArray() {
         return supportedFormats.split(",");

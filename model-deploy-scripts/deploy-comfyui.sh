@@ -10,11 +10,11 @@ set -e
 # -------------------- 配置 --------------------
 CONDA_ENV_NAME="comfyui"
 PYTHON_VERSION="3.10"
-INSTALL_DIR="$HOME/tryingai/comfyui"
+INSTALL_DIR="$HOME/ai/trainer/comfyui"
 API_HOST="0.0.0.0"
 API_PORT=8801
-LOG_FILE="$HOME/tryingai/comfyui/server.log"
-PID_FILE="$HOME/tryingai/comfyui/server.pid"
+LOG_FILE="$HOME/ai/trainer/comfyui/server.log"
+PID_FILE="$HOME/ai/trainer/comfyui/server.pid"
 REPO_URL="https://github.com/comfyanonymous/ComfyUI.git"
 # pip 国内镜像源（清华源），海外服务器可注释掉此行
 PIP_MIRROR="-i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --trusted-host mirrors.tuna.tsinghua.edu.cn"
@@ -188,9 +188,8 @@ show_access_info() {
 # -------------------- 开机自启（systemd） --------------------
 enable_autostart() {
     check_conda_env
-    local ENV_PYTHON
-    ENV_PYTHON=$(get_env_python)
-    [ -f "$ENV_PYTHON" ] || error "未找到 Python: $ENV_PYTHON，请先执行 install"
+    local CONDA_BASE
+    CONDA_BASE=$(conda info --base)
 
     local SERVICE_FILE="/etc/systemd/system/comfyui.service"
     info "创建 systemd 服务: $SERVICE_FILE"
@@ -199,13 +198,15 @@ enable_autostart() {
 [Unit]
 Description=ComfyUI Service
 After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
-Environment=PATH=$(dirname "$ENV_PYTHON"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
-ExecStart=$ENV_PYTHON $INSTALL_DIR/main.py --listen $API_HOST --port $API_PORT
+Environment=PATH=$CONDA_BASE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=$CONDA_BASE/bin/conda run --no-capture-output -n $CONDA_ENV_NAME python3 $INSTALL_DIR/main.py --listen $API_HOST --port $API_PORT
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:$LOG_FILE
@@ -218,6 +219,7 @@ EOF
     systemctl daemon-reload
     systemctl enable comfyui.service
     info "开机自启已启用"
+    info "  立即启动: systemctl start comfyui"
     info "  手动启停: systemctl start/stop comfyui"
     info "  查看状态: systemctl status comfyui"
 }
