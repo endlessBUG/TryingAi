@@ -53,7 +53,7 @@
         <el-icon class="el-icon--upload"><upload-filled /></el-icon>
         <div class="el-upload__text">拖拽压缩包到此处或<em>点击上传</em></div>
         <template #tip>
-          <div class="el-upload__tip">支持 ZIP、RAR 和 TAR.GZ 格式，最大 500MB</div>
+          <div class="el-upload__tip">支持 ZIP、RAR 和 TAR.GZ 格式，最大 10GB</div>
         </template>
       </el-upload>
 

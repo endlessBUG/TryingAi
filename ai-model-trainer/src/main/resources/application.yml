@@ -4,8 +4,8 @@ server:
 spring:
   servlet:
     multipart:
-      max-file-size: 500MB
-      max-request-size: 500MB
+      max-file-size: 10GB
+      max-request-size: 10GB
   datasource:
     url: jdbc:sqlite:${user.home}/ai/trainer/trainer.db
     driver-class-name: org.sqlite.JDBC
