@@ -169,16 +169,22 @@ import logging
 from typing import Optional, List
 from pathlib import Path
 
+# 确保 UTF-8 编码支持
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 import numpy as np
 import soundfile as sf
 import torch
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 import uvicorn
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, encoding='utf-8')
 logger = logging.getLogger(__name__)
 
 # 模型路径（从环境变量获取）
@@ -294,7 +300,7 @@ class FishAudioEngine:
         reference_text: Optional[str],
         sample_rate: int
     ) -> np.ndarray:
-        """调用 fish-speech CLI"""
+        """调用 fish-speech 推理"""
 
         import subprocess
         import tempfile
@@ -311,27 +317,52 @@ class FishAudioEngine:
                 sf.write(ref_audio_path, reference_audio, sample_rate)
 
         try:
-            # 构建 CLI 命令
-            # fish-speech 推理命令格式
-            cli_script = self.code_path / "fish_speech" / "text_to_speech.py"
+            # 多种推理方式尝试
+            cmd = None
 
-            if cli_script.exists():
-                # 使用官方 text_to_speech.py
-                cmd = [
-                    sys.executable,
-                    str(cli_script),
-                    "--text", text,
-                    "--output", output_path,
-                    "--checkpoint", str(self.model_path),
+            # 方式1: 使用 python -m fish_speech (推荐)
+            if self.code_path.exists():
+                # 检查多种可能的推理入口
+                inference_scripts = [
+                    self.code_path / "fish_speech" / "inference.py",
+                    self.code_path / "fish_speech" / "text_to_speech.py",
+                    self.code_path / "fish_speech" / "synthesize.py",
                 ]
-                if speed != 1.0:
-                    cmd.extend(["--speed", str(speed)])
-                if ref_audio_path:
-                    cmd.extend(["--reference-audio", ref_audio_path])
-                    if reference_text:
-                        cmd.extend(["--reference-text", reference_text])
-            else:
-                # 尝试使用 fish-speech 命令
+
+                for script in inference_scripts:
+                    if script.exists():
+                        cmd = [
+                            sys.executable,
+                            str(script),
+                            "--text", text,
+                            "--output", output_path,
+                            "--checkpoint", str(self.model_path),
+                        ]
+                        if speed != 1.0:
+                            cmd.extend(["--speed", str(speed)])
+                        if ref_audio_path:
+                            cmd.extend(["--reference-audio", ref_audio_path])
+                            if reference_text:
+                                cmd.extend(["--reference-text", reference_text])
+                        logger.info(f"使用推理脚本: {script.name}")
+                        break
+
+                # 如果没有找到脚本，尝试 python -m 方式
+                if cmd is None:
+                    cmd = [
+                        sys.executable, "-m", "fish_speech",
+                        "synthesize",
+                        "--text", text,
+                        "--output", output_path,
+                        "--checkpoint", str(self.model_path),
+                    ]
+                    # 设置 PYTHONPATH 以便能找到 fish_speech 模块
+                    env = os.environ.copy()
+                    env["PYTHONPATH"] = str(self.code_path)
+                    logger.info("使用 python -m fish_speech 方式")
+
+            # 方式2: fish-speech 命令行工具
+            if cmd is None:
                 cmd = [
                     "fish-speech",
                     "synthesize",
@@ -343,11 +374,17 @@ class FishAudioEngine:
             logger.info(f"执行命令: {' '.join(cmd)}")
 
             # 运行 CLI
+            env = os.environ.copy()
+            if self.code_path.exists():
+                env["PYTHONPATH"] = str(self.code_path)
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=120,
+                env=env,
+                cwd=str(self.code_path) if self.code_path.exists() else None
             )
 
             if result.returncode != 0:
@@ -389,7 +426,7 @@ class FishAudioEngine:
 app = FastAPI(
     title="Fish Audio TTS API",
     description="基于 PyTorch/CUDA 的文本转语音服务",
-    version="1.0.0",
+    version="1.0.1",
 )
 
 # 初始化引擎
@@ -423,39 +460,61 @@ async def list_models():
     }
 
 @app.post("/v1/audio/speech")
-async def create_speech(request: TTSRequest):
+async def create_speech(raw_request: Request):
     """
-    创建语音 - OpenAI 兼容接口
+    创建语音 - OpenAI 兼容接口 (UTF-8 Fixed)
     POST /v1/audio/speech
+    直接解析 UTF-8 JSON body，解决中文编码问题
     """
     try:
+        # 直接读取 body 并用 UTF-8 解析
+        body = await raw_request.body()
+        try:
+            data = json.loads(body.decode('utf-8'))
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 解析失败: {e}")
+            raise HTTPException(status_code=400, detail=f"JSON 解析失败: {str(e)}")
+
+        # 获取请求参数
+        text = data.get("input", "")
+        if not text:
+            raise HTTPException(status_code=400, detail="缺少 'input' 参数")
+
+        voice = data.get("voice", "default")
+        speed = float(data.get("speed", 1.0))
+        response_format = data.get("response_format", "wav")
+        reference_audio_b64 = data.get("reference_audio")
+        reference_text = data.get("reference_text")
+
+        logger.info(f"TTS 请求: text='{text[:50]}...', voice={voice}, speed={speed}")
+
         # 处理参考音频
         ref_audio = None
-        if request.reference_audio:
+        if reference_audio_b64:
             try:
-                audio_bytes = base64.b64decode(request.reference_audio)
+                audio_bytes = base64.b64decode(reference_audio_b64)
                 ref_audio, _ = sf.read(io.BytesIO(audio_bytes))
             except Exception as e:
                 logger.warning(f"参考音频解码失败: {e}")
 
         # 生成语音
         audio = engine.generate(
-            text=request.input,
-            voice=request.voice,
-            speed=request.speed,
+            text=text,
+            voice=voice,
+            speed=speed,
             reference_audio=ref_audio,
-            reference_text=request.reference_text
+            reference_text=reference_text
         )
 
         # 转换为输出格式
         sample_rate = 24000
 
-        if request.response_format == "wav":
+        if response_format == "wav":
             buffer = io.BytesIO()
             sf.write(buffer, audio, sample_rate, format="WAV")
             buffer.seek(0)
             media_type = "audio/wav"
-        elif request.response_format == "mp3":
+        elif response_format == "mp3":
             buffer = io.BytesIO()
             wav_buffer = io.BytesIO()
             sf.write(wav_buffer, audio, sample_rate, format="WAV")
@@ -473,10 +532,12 @@ async def create_speech(request: TTSRequest):
             buffer,
             media_type=media_type,
             headers={
-                "Content-Disposition": f"attachment; filename=speech.{request.response_format}"
+                "Content-Disposition": f"attachment; filename=speech.{response_format}"
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"语音生成失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -494,14 +555,25 @@ async def tts_simple(
     简化 TTS 接口 (表单提交)
     POST /v1/tts
     """
-    request = TTSRequest(
-        model="fish-audio-s2-pro",
-        input=text,
+    logger.info(f"简化接口请求: text='{text[:50]}...'")
+
+    # 生成语音
+    audio = engine.generate(
+        text=text,
         voice=voice,
-        response_format=format,
         speed=speed
     )
-    return await create_speech(request)
+
+    sample_rate = 24000
+    buffer = io.BytesIO()
+    sf.write(buffer, audio, sample_rate, format="WAV")
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="audio/wav",
+        headers={"Content-Disposition": f"attachment; filename=speech.{format}"}
+    )
 
 @app.post("/v1/tts/clone")
 async def tts_voice_clone(
@@ -839,9 +911,66 @@ show_logs() {
     wait $TAIL_PID
 }
 
+# -------------------- 诊断 --------------------
+diagnose() {
+    info "诊断 Fish Audio 环境..."
+
+    echo ""
+    echo "=== 模型目录 ==="
+    if [ -d "$MODEL_FILES_DIR" ]; then
+        ls -la "$MODEL_FILES_DIR"
+        echo ""
+        echo "模型文件:"
+        find "$MODEL_FILES_DIR" -name "*.safetensors" -o -name "*.pt" -o -name "*.bin" -o -name "*.pth" 2>/dev/null
+    else
+        warn "模型目录不存在: $MODEL_FILES_DIR"
+    fi
+
+    echo ""
+    echo "=== fish-speech 代码目录 ==="
+    if [ -d "$CODE_DIR" ]; then
+        ls -la "$CODE_DIR"
+        echo ""
+        echo "fish_speech 模块结构:"
+        if [ -d "$CODE_DIR/fish_speech" ]; then
+            ls -la "$CODE_DIR/fish_speech"
+            echo ""
+            echo "可能的推理脚本:"
+            find "$CODE_DIR" -name "inference.py" -o -name "text_to_speech.py" -o -name "synthesize.py" -o -name "generate.py" 2>/dev/null
+            echo ""
+            echo "CLI 相关文件:"
+            find "$CODE_DIR" -name "*.py" | xargs grep -l "def main" 2>/dev/null | head -10
+        else
+            warn "fish_speech 模块不存在"
+        fi
+    else
+        warn "代码目录不存在: $CODE_DIR"
+    fi
+
+    echo ""
+    echo "=== Conda 环境 ==="
+    conda env list | grep fish-audio || warn "Conda 环境 fish-audio 不存在"
+
+    echo ""
+    echo "=== Python 模块检查 ==="
+    if conda env list | grep -q fish-audio; then
+        conda_run python3 -c "import torch; print(f'PyTorch: {torch.__version__}')" 2>/dev/null || warn "PyTorch 未安装"
+        conda_run python3 -c "import fish_speech; print('fish_speech 模块可用')" 2>/dev/null || warn "fish_speech 模块不可用 (需要设置 PYTHONPATH)"
+        # 检查是否安装了 fish-speech CLI
+        conda_run which fish-speech 2>/dev/null || warn "fish-speech CLI 未安装"
+    fi
+
+    echo ""
+    echo "=== 建议 ==="
+    if [ -d "$CODE_DIR/fish_speech" ]; then
+        info "PYTHONPATH 应设置为: $CODE_DIR"
+        info "推理脚本可能位于: $CODE_DIR/fish_speech/"
+    fi
+}
+
 # -------------------- 主入口 --------------------
 usage() {
-    echo "用法: $0 {install|start|start-fg|stop|restart|status|test|logs|enable-autostart|disable-autostart}"
+    echo "用法: $0 {install|start|start-fg|stop|restart|status|test|logs|diagnose|enable-autostart|disable-autostart}"
     echo ""
     echo "  install           - 安装依赖、克隆代码、创建 API 服务、下载模型（首次使用）"
     echo "  download-model    - 单独下载/续传模型文件"
@@ -852,6 +981,7 @@ usage() {
     echo "  status            - 查看服务状态"
     echo "  test              - 测试 API 连通性"
     echo "  logs              - 实时查看日志（Ctrl+C 退出）"
+    echo "  diagnose          - 诊断环境，查看推理脚本路径"
     echo "  enable-autostart  - 注册 systemd 服务，开机自动启动"
     echo "  disable-autostart - 取消开机自动启动"
     echo ""
@@ -906,6 +1036,9 @@ case "${1:-}" in
         ;;
     logs)
         show_logs
+        ;;
+    diagnose)
+        diagnose
         ;;
     enable-autostart)
         enable_autostart
