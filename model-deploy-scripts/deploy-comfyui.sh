@@ -9,7 +9,7 @@ set -e
 
 # -------------------- 配置 --------------------
 CONDA_ENV_NAME="comfyui"
-PYTHON_VERSION="3.10"
+PYTHON_VERSION="3.13"
 INSTALL_DIR="$HOME/ai/trainer/comfyui"
 API_HOST="0.0.0.0"
 API_PORT=8801
@@ -99,9 +99,9 @@ install_dependencies() {
         TORCH_VER=$(conda_run python3 -c "import torch; print(torch.__version__)")
         info "[2/3] PyTorch 已安装 ($TORCH_VER)，跳过"
     else
-        info "[2/3] 安装 PyTorch (CUDA 12.1)..."
+        info "[2/3] 安装 PyTorch (CUDA 12.4)..."
         conda_run pip install torch torchvision torchaudio \
-            --index-url https://download.pytorch.org/whl/cu121 \
+            --index-url https://download.pytorch.org/whl/cu124 \
             --root-user-action=ignore
     fi
 
@@ -124,11 +124,15 @@ start_server() {
     info "后台启动 ComfyUI..."
     info "  监听地址: http://$API_HOST:$API_PORT"
     info "  日志文件: $LOG_FILE"
+    info "  内存优化: --lowvram (低显存模式)"
 
+    # 设置 CUDA 内存优化环境变量 + --lowvram 参数
     nohup conda run --no-capture-output -n "$CONDA_ENV_NAME" \
+        env PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True,max_split_size_mb:128" \
         python3 "$INSTALL_DIR/main.py" \
             --listen "$API_HOST" \
             --port "$API_PORT" \
+            --lowvram \
         > "$LOG_FILE" 2>&1 &
 
     local PID=$!
@@ -143,9 +147,12 @@ start_server() {
 start_foreground() {
     [ -f "$INSTALL_DIR/main.py" ] || error "未找到 main.py，请先执行 install"
     info "前台启动 ComfyUI（Ctrl+C 停止）..."
+    info "  内存优化: --lowvram (低显存模式)"
+    PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True,max_split_size_mb:128" \
     conda_run python3 "$INSTALL_DIR/main.py" \
         --listen "$API_HOST" \
-        --port "$API_PORT"
+        --port "$API_PORT" \
+        --lowvram
 }
 
 # -------------------- 停止服务 --------------------
@@ -206,7 +213,8 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 Environment=PATH=$CONDA_BASE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
-ExecStart=$CONDA_BASE/bin/conda run --no-capture-output -n $CONDA_ENV_NAME python3 $INSTALL_DIR/main.py --listen $API_HOST --port $API_PORT
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
+ExecStart=$CONDA_BASE/bin/conda run --no-capture-output -n $CONDA_ENV_NAME python3 $INSTALL_DIR/main.py --listen $API_HOST --port $API_PORT --lowvram
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:$LOG_FILE

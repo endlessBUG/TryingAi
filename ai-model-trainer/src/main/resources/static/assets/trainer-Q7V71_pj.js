@@ -1,1 +1,0 @@
-import{s as e}from"./_plugin-vue_export-helper-bb27QPe_.js";function a(){return e({url:"/trainers",method:"get"})}function u(r){return e({url:"/trainers",method:"post",data:r})}function i(r,t){return e({url:`/trainers/${r}`,method:"put",data:t})}function s(r){return e({url:`/trainers/${r}`,method:"delete"})}export{u as c,s as d,a as g,i as u};

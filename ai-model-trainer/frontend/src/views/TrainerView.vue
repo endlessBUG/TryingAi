@@ -59,7 +59,7 @@
         </el-form-item>
         <el-form-item label="默认YAML配置">
           <YamlEditor v-model="form.defaultYamlConfig" height="420px" />
-          <div class="yaml-hint">数据集路径请使用 <code>{{DATASET_PATH}}</code> 占位符</div>
+          <div class="yaml-hint">占位符: <code>{{DATASET_PATH}}</code> 数据集路径, <code>{{DATASET_NAME}}</code> LoRA名称, <code>{{TRIGGER_WORD}}</code> 触发词</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -81,15 +81,16 @@ import YamlEditor from '@/components/YamlEditor.vue'
 const AI_TOOLKIT_YAML = `---
 job: extension
 config:
-  name: "my_first_wan22_14b_lora_v1"
+  name: "{{DATASET_NAME}}"
   process:
     - type: 'sd_trainer'
       training_folder: "output"
       device: cuda:0
+      trigger_word: "{{TRIGGER_WORD}}"
       network:
         type: "lora"
-        linear: 32
-        linear_alpha: 32
+        linear: 64
+        linear_alpha: 64
       save:
         dtype: float16
         save_every: 250
@@ -99,18 +100,20 @@ config:
           caption_ext: "txt"
           caption_dropout_rate: 0.05
           num_frames: 1
-          resolution: [512, 768, 1024]
+          resolution: [768]
+          worker_nums: 1
+          cache_latents_to_disk: true
       train:
         batch_size: 1
-        steps: 2000
-        gradient_accumulation: 1
+        steps: 5000
+        gradient_accumulation: 4
         train_unet: true
         train_text_encoder: false
         gradient_checkpointing: true
         noise_scheduler: "flowmatch"
         timestep_type: 'linear'
         optimizer: "adamw8bit"
-        lr: 1e-4
+        lr: 3e-5
         optimizer_params:
           weight_decay: 1e-4
         dtype: bf16
@@ -124,20 +127,20 @@ config:
         quantize_te: true
         qtype_te: "qfloat8"
         low_vram: true
+        cache_latents_to_disk: true
         model_kwargs:
           train_high_noise: true
           train_low_noise: true
       sample:
         sampler: "flowmatch"
         sample_every: 250
-        width: 1024
-        height: 1024
+        width: 768
+        height: 768
         num_frames: 1
         fps: 16
         prompts:
-          - "woman with red hair, playing chess at the park, bomb going off in the background"
-          - "a woman holding a coffee cup, in a beanie, sitting at a cafe"
-          - "a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini"
+          - "{{TRIGGER_WORD}}, a beautiful woman with long black hair"
+          - "{{TRIGGER_WORD}}, a woman holding a coffee cup, in a beanie, sitting at a cafe"
         neg: ""
         seed: 42
         walk_seed: true

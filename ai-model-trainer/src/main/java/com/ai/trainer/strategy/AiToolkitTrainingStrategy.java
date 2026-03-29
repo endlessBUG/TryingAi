@@ -110,6 +110,9 @@ public class AiToolkitTrainingStrategy implements TrainingStrategy {
         readProcessOutput(process, task.getTaskId(), logPath, taskMgr);
 
         waitForProcess(process);
+        
+        // 训练成功后部署到 ComfyUI
+        deployToComfyUI(task);
     }
 
     @Override
@@ -257,6 +260,96 @@ public class AiToolkitTrainingStrategy implements TrainingStrategy {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new TrainingException("训练被中断");
+        }
+    }
+
+    /** 训练完成后部署 LoRA 到 ComfyUI */
+    private void deployToComfyUI(TrainingTask task) {
+        String outputDir = task.getOutputPath();
+        if (outputDir == null || outputDir.isBlank()) return;
+
+        String comfyuiDir = properties.getComfyuiDir();
+        if (comfyuiDir == null || comfyuiDir.isBlank()) return;
+
+        Path loraTargetDir = Path.of(comfyuiDir, "models", "loras");
+        loraTargetDir.toFile().mkdirs();
+
+        // 查找输出目录下的所有子目录
+        File outputFolder = new File(outputDir);
+        if (!outputFolder.exists()) return;
+
+        // Wan2.2 高低噪模型名字中带 high 和 low，获取最新的两个
+        File[] highNoiseFile = { null };
+        File[] lowNoiseFile = { null };
+        long[] highLastModified = { 0 };
+        long[] lowLastModified = { 0 };
+
+        // 遍历输出目录及其子目录查找模型文件
+        findLatestLoraFiles(outputFolder, highNoiseFile, lowNoiseFile, highLastModified, lowLastModified);
+
+        // 复制找到的模型文件
+        if (highNoiseFile[0] != null) {
+            copyLoraFile(highNoiseFile[0], loraTargetDir);
+        }
+        if (lowNoiseFile[0] != null) {
+            copyLoraFile(lowNoiseFile[0], loraTargetDir);
+        }
+
+        // 重启 ComfyUI
+        restartComfyUI();
+    }
+
+    private void findLatestLoraFiles(File folder, File[] highFile, File[] lowFile, long[] highTime, long[] lowTime) {
+        File[] files = folder.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                findLatestLoraFiles(file, highFile, lowFile, highTime, lowTime);
+            } else {
+                String name = file.getName();
+                if (!name.endsWith(".safetensors")) continue;
+                long lastModified = file.lastModified();
+                if (name.contains("high") && lastModified > highTime[0]) {
+                    highTime[0] = lastModified;
+                    highFile[0] = file;
+                } else if (name.contains("low") && lastModified > lowTime[0]) {
+                    lowTime[0] = lastModified;
+                    lowFile[0] = file;
+                }
+            }
+        }
+    }
+
+    private void copyLoraFile(File loraFile, Path targetDir) {
+        try {
+            Path targetPath = targetDir.resolve(loraFile.getName());
+            Files.copy(loraFile.toPath(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            log.info("已部署 LoRA 到 ComfyUI: {}", targetPath);
+        } catch (IOException e) {
+            log.error("复制 LoRA 失败: {}", e.getMessage());
+        }
+    }
+
+    private void restartComfyUI() {
+        String scriptPath = System.getProperty("user.home") + "/ai/trainer/deploy-comfyui.sh";
+        File script = new File(scriptPath);
+        if (!script.exists()) {
+            log.warn("未找到 ComfyUI 部署脚本: {}", scriptPath);
+            return;
+        }
+        try {
+            ProcessBuilder pb = new ProcessBuilder("bash", scriptPath, "restart");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            int exitCode = p.waitFor();
+            if (exitCode == 0) {
+                log.info("ComfyUI 重启成功");
+            } else {
+                log.warn("ComfyUI 重启失败，退出码: {}", exitCode);
+            }
+        } catch (Exception e) {
+            log.error("重启 ComfyUI 失败: {}", e.getMessage());
         }
     }
 

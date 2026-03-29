@@ -40,7 +40,15 @@
               <img :src="comfyuiLogo" class="comfyui-icon" alt="ComfyUI" />
               <span>ComfyUI</span>
             </el-menu-item>
+            <el-menu-item index="/comfyui-workflows">
+              <el-icon><connection /></el-icon>
+              <span>工作流管理</span>
+            </el-menu-item>
           </el-sub-menu>
+          <el-menu-item index="/ai-configs">
+            <el-icon><cpu /></el-icon>
+            <span>AI服务配置</span>
+          </el-menu-item>
           <el-menu-item index="/settings">
             <el-icon><setting /></el-icon>
             <span>配置中心</span>
@@ -58,7 +66,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { Setting, Upload, List, Cpu, MagicStick, Suitcase } from '@element-plus/icons-vue'
+import { Setting, Upload, List, Cpu, MagicStick, Suitcase, Connection } from '@element-plus/icons-vue'
 import comfyuiLogo from '@/assets/comfyui-logo.svg'
 import { useSystemConfigStore } from '@/stores/systemConfig'
 

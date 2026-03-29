@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -86,12 +88,26 @@ public class AutoPipelineService {
 
     private String resolveYaml(String userYaml, Dataset ds, Trainer trainer) {
         if (userYaml != null && !userYaml.isBlank()) {
-            return userYaml;
+            return replacePlaceholders(userYaml, ds);
         }
         if (trainer != null && trainer.getDefaultYamlConfig() != null) {
-            return trainer.getDefaultYamlConfig().replace("{{DATASET_PATH}}", toYamlPath(ds.getDatasetPath()));
+            return replacePlaceholders(trainer.getDefaultYamlConfig(), ds);
         }
         return generateDefaultYaml(ds);
+    }
+
+    private String replacePlaceholders(String yaml, Dataset ds) {
+        String result = yaml.replace("{{DATASET_PATH}}", toYamlPath(ds.getDatasetPath()));
+        result = result.replace("{{DATASET_NAME}}", generateLoraName(ds.getName()));
+        result = result.replace("{{TRIGGER_WORD}}", "");
+        return result;
+    }
+
+    private String generateLoraName(String datasetName) {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMdd_HHmm"));
+        String baseName = datasetName.replaceAll("[^a-zA-Z0-9_\\-]", "");
+        String fullName = baseName + "_" + timestamp;
+        return fullName.length() > 20 ? fullName.substring(0, 20) : fullName;
     }
 
     private String generateDefaultYaml(Dataset ds) {

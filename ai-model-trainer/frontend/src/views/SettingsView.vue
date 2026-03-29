@@ -21,6 +21,11 @@
           <div class="field-hint">ComfyUI Manager 后端服务的根目录，用于存放 LoRA 模型等文件</div>
         </el-form-item>
 
+        <el-form-item label="ComfyUI 安装路径">
+          <el-input v-model="form.comfyuiDir" placeholder="例如: /root/ai/trainer/comfyui" />
+          <div class="field-hint">ComfyUI 服务的安装目录路径，默认: ${user.home}/ai/trainer/comfyui</div>
+        </el-form-item>
+
         <el-divider content-position="left">Conda 环境</el-divider>
 
         <el-form-item label="Conda 路径">
@@ -98,6 +103,7 @@ const formRef = ref<FormInstance>()
 const form = ref({
   comfyuiUrl: '',
   comfyuiPath: '',
+  comfyuiDir: '',
   condaPath: '',
   condaInitCommand: '',
   githubProxy: '',
@@ -114,6 +120,7 @@ const detectError = ref('')
 function fillForm() {
   form.value.comfyuiUrl = configStore.get('comfyui.url')
   form.value.comfyuiPath = configStore.get('comfyui.path')
+  form.value.comfyuiDir = configStore.get('comfyui.dir')
   form.value.condaPath = configStore.get('conda.path')
   form.value.condaInitCommand = configStore.get('conda.init_command')
   form.value.githubProxy = configStore.get('github.proxy')
@@ -128,6 +135,7 @@ async function handleSave() {
     await configStore.save({
       'comfyui.url': form.value.comfyuiUrl,
       'comfyui.path': form.value.comfyuiPath,
+      'comfyui.dir': form.value.comfyuiDir,
       'conda.path': form.value.condaPath,
       'conda.init_command': form.value.condaInitCommand,
       'github.proxy': form.value.githubProxy,

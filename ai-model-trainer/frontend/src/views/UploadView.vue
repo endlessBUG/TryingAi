@@ -266,13 +266,13 @@
         <el-form-item label="触发词">
           <el-input v-model="pipelineTriggerWord" placeholder="可选，如 ohwx、sks" clearable />
           <div style="font-size: 12px; color: #909399; margin-top: 4px">
-            填写后将自动注入 YAML，采样提示词中可用 [trigger] 占位符引用
+            填写后将替换 YAML 中的 <code v-pre>&#123;&#123;TRIGGER_WORD&#125;&#125;</code> 占位符
           </div>
         </el-form-item>
         <el-form-item v-if="pipelineYamlConfig" label="YAML 配置">
           <YamlEditor v-model="pipelineYamlConfig" height="380px" />
           <div style="font-size: 12px; color: #909399; margin-top: 4px">
-            占位符 <code v-pre>&#123;&#123;DATASET_PATH&#125;&#125;</code> 已自动替换为数据集路径，可手动调整其他参数
+            占位符 <code v-pre>&#123;&#123;DATASET_PATH&#125;&#125;</code>、<code v-pre>&#123;&#123;DATASET_NAME&#125;&#125;</code>、<code v-pre>&#123;&#123;TRIGGER_WORD&#125;&#125;</code> 已自动替换
           </div>
         </el-form-item>
       </el-form>
@@ -681,7 +681,10 @@ const onPipelineTrainerChange = (trainerId: string) => {
     return
   }
   const dsPath = pipelineDataset.value?.datasetPath || ''
-  pipelineYamlConfig.value = trainer.defaultYamlConfig.replace(/\{\{DATASET_PATH}}/g, dsPath)
+  const dsName = pipelineDataset.value?.name || ''
+  pipelineYamlConfig.value = trainer.defaultYamlConfig
+    .replace(/\{\{DATASET_PATH}}/g, dsPath)
+    .replace(/\{\{DATASET_NAME}}/g, generateLoraName(dsName))
   const extracted = extractNameOrPath(pipelineYamlConfig.value)
   const absolutePath = modelIdToAbsolutePath(extracted)
   pipelineBaseModel.value = absolutePath || extracted
@@ -692,6 +695,14 @@ const onPipelineTrainerChange = (trainerId: string) => {
     )
   }
   applyTriggerWord()
+}
+
+const generateLoraName = (datasetName: string): string => {
+  const timestamp = new Date().toISOString().slice(5, 10).replace('-', '') + '_' +
+                    new Date().toTimeString().slice(0, 5).replace(':', '')
+  const baseName = (datasetName || '').replace(/[^a-zA-Z0-9_\-]/g, '')
+  const fullName = baseName + '_' + timestamp
+  return fullName.length > 20 ? fullName.slice(0, 20) : fullName
 }
 
 const extractNameOrPath = (yaml: string): string => {
@@ -715,15 +726,8 @@ const onBaseModelChange = (modelId: string) => {
 
 const applyTriggerWord = () => {
   if (!pipelineYamlConfig.value) return
-  let yaml = pipelineYamlConfig.value.replace(/^[ \t]*trigger_word:.*\n?/m, '')
   const word = pipelineTriggerWord.value.trim()
-  if (word) {
-    yaml = yaml.replace(
-      /^([ \t]*)(device:.*\n)/m,
-      `$1$2$1trigger_word: "${word}"\n`
-    )
-  }
-  pipelineYamlConfig.value = yaml
+  pipelineYamlConfig.value = pipelineYamlConfig.value.replace(/\{\{TRIGGER_WORD}}/g, word)
 }
 
 watch(pipelineTriggerWord, applyTriggerWord)

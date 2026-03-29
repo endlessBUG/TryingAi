@@ -45,10 +45,22 @@ const router = createRouter({
           meta: { title: 'ComfyUI' }
         },
         {
+          path: 'comfyui-workflows',
+          name: 'ComfyuiWorkflows',
+          component: () => import('@/views/ComfyuiWorkflowView.vue'),
+          meta: { title: '工作流管理' }
+        },
+        {
           path: 'settings',
           name: 'Settings',
           component: () => import('@/views/SettingsView.vue'),
           meta: { title: '配置中心' }
+        },
+        {
+          path: 'ai-configs',
+          name: 'AIConfigs',
+          component: () => import('@/views/AIConfigView.vue'),
+          meta: { title: 'AI服务配置' }
         }
       ]
     }

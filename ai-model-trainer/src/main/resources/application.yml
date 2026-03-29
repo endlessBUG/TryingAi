@@ -28,6 +28,7 @@ trainer:
   config-dir: ${user.home}/ai/trainer/configs
   log-dir: ${user.home}/ai/trainer/logs
   model-dir: ${user.home}/ai/trainer/models
+  comfyui-dir: ${user.home}/ai/trainer/comfyui
   supported-formats: jpg,jpeg,png,webp,bmp
   max-concurrent-tasks: 2
   default-conda-env: wan22
