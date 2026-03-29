@@ -78,3 +78,6 @@ node_modules/
 
 # AI model trainer data
 ai-model-trainer/data/
+
+# Claude Code
+.claude/
