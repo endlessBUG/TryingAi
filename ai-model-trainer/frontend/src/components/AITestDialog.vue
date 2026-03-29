@@ -269,18 +269,51 @@
 
         <!-- 文本转语音 -->
         <el-form v-else-if="config?.serviceType === 'text_to_speech'" :model="form" label-width="100px">
+          <el-form-item label="TTS模式">
+            <el-radio-group v-model="form.ttsMode">
+              <el-radio value="speech">普通合成</el-radio>
+              <el-radio value="clone">音色克隆</el-radio>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="输入文本" required>
             <el-input
               v-model="form.prompt"
               type="textarea"
-              :rows="5"
+              :rows="4"
               placeholder="请输入要转换为语音的文本..."
             />
           </el-form-item>
-          <el-form-item label="音色">
+          <el-form-item v-if="form.ttsMode === 'speech'" label="音色">
             <el-input v-model="form.voice" placeholder="可选，输入音色ID或名称" />
             <div class="form-tip">OpenAI 支持 alloy/echo/fable/onyx/nova/shimmer</div>
           </el-form-item>
+          <template v-else-if="form.ttsMode === 'clone'">
+            <el-form-item label="参考音频" required>
+              <el-upload
+                class="audio-uploader"
+                :show-file-list="false"
+                :before-upload="handleReferenceAudioUpload"
+                accept="audio/*,.wav,.mp3,.m4a"
+              >
+                <div v-if="form.referenceAudioUrl" class="uploaded-audio">
+                  <el-icon><Headset /></el-icon>
+                  <span>参考音频已上传</span>
+                </div>
+                <div v-else class="upload-placeholder">
+                  <el-icon class="upload-icon"><Plus /></el-icon>
+                  <span>点击上传参考音频</span>
+                </div>
+              </el-upload>
+            </el-form-item>
+            <el-form-item label="参考文本">
+              <el-input
+                v-model="form.referenceText"
+                type="textarea"
+                :rows="2"
+                placeholder="参考音频对应的文本（可选）..."
+              />
+            </el-form-item>
+          </template>
         </el-form>
       </div>
 
@@ -423,7 +456,10 @@ const form = reactive({
   steps: 30,
   seed: -1,
   durationSeconds: 5,
-  negativePrompt: ''
+  negativePrompt: '',
+  ttsMode: 'speech' as 'speech' | 'clone',
+  referenceAudioUrl: '',
+  referenceText: ''
 })
 
 watch(() => props.modelValue, (val) => {
@@ -446,6 +482,9 @@ const resetForm = () => {
   form.seed = -1
   form.durationSeconds = 5
   form.negativePrompt = ''
+  form.ttsMode = 'speech'
+  form.referenceAudioUrl = ''
+  form.referenceText = ''
 }
 
 /**
@@ -518,6 +557,15 @@ const handleAudioUpload = (file: File) => {
   return false
 }
 
+const handleReferenceAudioUpload = (file: File) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    form.referenceAudioUrl = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  return false
+}
+
 const handleTest = async () => {
   if (!props.config) return
 
@@ -550,6 +598,13 @@ const handleTest = async () => {
     }
   }
 
+  if (props.config.serviceType === 'text_to_speech' && form.ttsMode === 'clone') {
+    if (!form.referenceAudioUrl) {
+      ElMessage.warning('请上传参考音频')
+      return
+    }
+  }
+
   loading.value = true
   result.value = null
 
@@ -567,7 +622,10 @@ const handleTest = async () => {
       seed: form.seed,
       duration: form.durationSeconds * 16, // 秒转帧
       frames: form.durationSeconds * 16,
-      negativePrompt: form.negativePrompt
+      negativePrompt: form.negativePrompt,
+      ttsMode: form.ttsMode,
+      referenceAudioUrl: form.referenceAudioUrl,
+      referenceText: form.referenceText
     })
     console.log('API Response:', res)
     console.log('imageUrl:', res.data?.imageUrl)

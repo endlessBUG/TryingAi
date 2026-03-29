@@ -202,7 +202,8 @@ const rules: FormRules = {
   apiKey: [
     {
       validator: (rule: any, value: any, callback: any) => {
-        if (form.provider !== 'comfyui' && !value) {
+        // ComfyUI 和 FishAudio 本地部署不需要 API Key
+        if (form.provider !== 'comfyui' && form.provider !== 'fishaudio' && !value) {
           callback(new Error('请输入 API Key'))
         } else {
           callback()

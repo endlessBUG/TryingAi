@@ -183,33 +183,80 @@ public class OpenAIClient implements AIClient {
 
     /**
      * 文本转语音
+     * 支持 OpenAI 和 FishAudio 格式
      */
     private TestGenerateResult generateSpeech(AIConfig config, TestGenerateRequest request) throws Exception {
-        String url = buildUrl(config, "/audio/speech");
-        String model = getFirstModel(config);
+        String provider = config.getProvider();
+        String url;
+        String body;
 
-        String body = objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                .put("model", model)
-                .put("input", request.getPrompt())
-                .put("voice", request.getVoice() != null ? request.getVoice() : "alloy")
-        );
+        if ("fishaudio".equals(provider)) {
+            // FishAudio API 格式
+            url = buildUrl(config, "/v1/tts");
 
-        Request httpRequest = new Request.Builder()
+            ObjectNode bodyNode = objectMapper.createObjectNode();
+            bodyNode.put("text", request.getPrompt());
+
+            // 音色克隆模式
+            if ("clone".equals(request.getTtsMode()) && request.getReferenceAudioUrl() != null && !request.getReferenceAudioUrl().isEmpty()) {
+                // 解析 base64 音频数据
+                String audioData = request.getReferenceAudioUrl();
+                if (audioData.contains(",")) {
+                    audioData = audioData.split(",")[1];
+                }
+                bodyNode.put("reference_audio", audioData);
+                if (request.getReferenceText() != null && !request.getReferenceText().isEmpty()) {
+                    bodyNode.put("reference_text", request.getReferenceText());
+                }
+            } else {
+                // 普通模式，使用音色ID
+                String voice = request.getVoice();
+                if (voice != null && !voice.isEmpty()) {
+                    bodyNode.put("reference_id", voice);
+                }
+                // 如果没有填写音色ID，不传reference_id，让服务端使用默认音色
+            }
+
+            body = objectMapper.writeValueAsString(bodyNode);
+            log.info("FishAudio TTS 请求 URL: {}", url);
+            log.info("FishAudio TTS 请求 Body (前500字符): {}", body.length() > 500 ? body.substring(0, 500) + "..." : body);
+        } else {
+            // OpenAI 格式
+            url = buildUrl(config, "/audio/speech");
+            String model = getFirstModel(config);
+
+            body = objectMapper.writeValueAsString(objectMapper.createObjectNode()
+                    .put("model", model)
+                    .put("input", request.getPrompt())
+                    .put("voice", request.getVoice() != null ? request.getVoice() : "alloy")
+            );
+            log.info("OpenAI TTS 请求 URL: {}", url);
+            log.info("OpenAI TTS 请求 Body: {}", body);
+        }
+
+        Request.Builder requestBuilder = new Request.Builder()
                 .url(url)
-                .addHeader("Authorization", "Bearer " + config.getApiKey())
                 .addHeader("Content-Type", "application/json")
-                .post(RequestBody.create(body, MediaType.parse("application/json")))
-                .build();
+                .post(RequestBody.create(body, MediaType.parse("application/json")));
+
+        // FishAudio 不需要 Authorization header（本地部署）
+        if (!"fishaudio".equals(provider) && config.getApiKey() != null && !config.getApiKey().isEmpty()) {
+            requestBuilder.addHeader("Authorization", "Bearer " + config.getApiKey());
+        }
+
+        Request httpRequest = requestBuilder.build();
 
         try (Response response = httpClient.newCall(httpRequest).execute()) {
             if (!response.isSuccessful()) {
-                throw new Exception("语音生成失败: HTTP " + response.code());
+                String errorBody = response.body() != null ? response.body().string() : "";
+                log.error("语音生成失败: HTTP {}, URL: {}, body: {}", response.code(), url, errorBody);
+                throw new Exception("语音生成失败: HTTP " + response.code() + " - " + errorBody);
             }
             // 返回音频数据，这里简化处理返回base64
             byte[] audioData = response.body().bytes();
             String base64 = java.util.Base64.getEncoder().encodeToString(audioData);
             return TestGenerateResult.builder()
-                    .audioUrl("data:audio/mp3;base64," + base64)
+                    .audioUrl("data:audio/wav;base64," + base64)
                     .build();
         }
     }

@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -144,6 +145,8 @@ public class ComfyUIClient implements AIClient {
 
         String firstFrameFilename = uploadFile(config, request.getFirstFrameUrl(), "image");
         String lastFrameFilename = uploadFile(config, request.getLastFrameUrl(), "image");
+        log.info("上传首帧文件: {}, 尾帧文件: {}", firstFrameFilename, lastFrameFilename);
+
         // 前端已经将秒数转换为帧数，直接使用
         int frames = request.getDuration() != null ? request.getDuration() : 80;
 
@@ -159,6 +162,7 @@ public class ComfyUIClient implements AIClient {
         params.put("seed", String.valueOf(request.getSeed() != null && request.getSeed() > 0 ? request.getSeed() : System.currentTimeMillis() % 1000000000));
 
         String workflowJson = loadWorkflowTemplate(config, params);
+        log.info("===== 首尾帧视频生成工作流 =====\n{}", workflowJson);
         String promptId = submitPrompt(config, workflowJson);
         return waitForVideoCompletion(config, promptId);
     }
@@ -199,17 +203,76 @@ public class ComfyUIClient implements AIClient {
 
     /**
      * 从配置中获取工作流文件名
+     * 如果未配置，根据服务类型和模型名自动推断
      */
     private String getWorkflowFilename(AIConfig config) {
+        // 优先从 settings 中获取
         if (config.getSettings() != null && !config.getSettings().isEmpty()) {
             try {
                 JsonNode settingsNode = objectMapper.readTree(config.getSettings());
-                return settingsNode.path("workflow_filename").asText(null);
+                String filename = settingsNode.path("workflow_filename").asText(null);
+                if (filename != null && !filename.isEmpty()) {
+                    return filename;
+                }
             } catch (Exception e) {
                 log.warn("解析settings失败", e);
             }
         }
-        return null;
+
+        // 根据 serviceType 和 model 自动推断默认工作流文件名
+        return getDefaultWorkflowFilename(config);
+    }
+
+    /**
+     * 根据服务类型和模型名获取默认工作流文件名
+     */
+    private String getDefaultWorkflowFilename(AIConfig config) {
+        String serviceType = config.getServiceType();
+        String modelJson = config.getModel();
+        String model = "";
+
+        // 解析 model JSON 数组
+        if (modelJson != null && !modelJson.isEmpty()) {
+            try {
+                JsonNode modelNode = objectMapper.readTree(modelJson);
+                if (modelNode.isArray() && modelNode.size() > 0) {
+                    model = modelNode.get(0).asText();
+                } else if (modelNode.isTextual()) {
+                    model = modelNode.asText();
+                }
+            } catch (Exception e) {
+                log.warn("解析model字段失败", e);
+            }
+        }
+
+        // 映射规则：model 名称 -> 工作流文件名
+        return switch (serviceType) {
+            case "image" -> {
+                // Turbo 模型使用 turbo 工作流
+                if (model.contains("turbo")) yield "z_image_turbo.json";
+                yield "z_image_turbo.json"; // 默认使用 turbo
+            }
+            case "image_to_image" -> {
+                // Flux2 Klein KV 模型
+                if (model.contains("flux2") || model.contains("klein") || model.contains("kv")) {
+                    yield "flux2_klein_9b_kv_i2i.json";
+                }
+                yield "flux2_klein_9b_kv_i2i.json"; // 默认使用 flux2
+            }
+            case "video" -> {
+                // Wan2.2 文生视频
+                yield "wan22_t2v.json";
+            }
+            case "video_frame" -> {
+                // Wan2.2 首尾帧视频
+                yield "wan22_flf2v.json";
+            }
+            case "sound_to_video" -> {
+                // Wan2.2 语音图片转视频
+                yield "wan22_s2v.json";
+            }
+            default -> null;
+        };
     }
 
     /**
