@@ -1,0 +1,118 @@
+{
+  "3": {
+    "inputs": {
+      "seed": {{SEED}},
+      "steps": {{STEPS}},
+      "cfg": 1,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["54", 0],
+      "positive": ["81", 0],
+      "negative": ["81", 1],
+      "latent_image": ["81", 2]
+    },
+    "class_type": "KSampler"
+  },
+  "6": {
+    "inputs": {
+      "text": "{{PROMPT}}",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "7": {
+    "inputs": {
+      "text": "{{NEGATIVE_PROMPT}}",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "37": {
+    "inputs": {
+      "unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "52": {
+    "inputs": {
+      "image": "{{FIRST_FRAME}}",
+      "upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "53": {
+    "inputs": {
+      "image": "{{LAST_FRAME}}",
+      "upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "54": {
+    "inputs": {
+      "shift": 8,
+      "model": ["107", 0]
+    },
+    "class_type": "ModelSamplingSD3"
+  },
+  "80": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["39", 0]
+    },
+    "class_type": "VAEDecode"
+  },
+  "82": {
+    "inputs": {
+      "fps": 16,
+      "images": ["80", 0]
+    },
+    "class_type": "CreateVideo"
+  },
+  "81": {
+    "inputs": {
+      "width": {{WIDTH}},
+      "height": {{HEIGHT}},
+      "length": {{FRAMES}},
+      "batch_size": 1,
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["39", 0],
+      "clip_vision_start_image": ["52", 0],
+      "clip_vision_end_image": ["53", 0]
+    },
+    "class_type": "WanFirstLastFrameToVideo"
+  },
+  "107": {
+    "inputs": {
+      "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+      "strength_model": 1,
+      "model": ["37", 0]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "113": {
+    "inputs": {
+      "filename_prefix": "video/flf2v",
+      "format": "auto",
+      "codec": "auto",
+      "video": ["82", 0]
+    },
+    "class_type": "SaveVideo"
+  }
+}

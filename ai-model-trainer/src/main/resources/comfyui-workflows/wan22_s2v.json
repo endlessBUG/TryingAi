@@ -1,0 +1,130 @@
+{
+  "3": {
+    "inputs": {
+      "seed": {{SEED}},
+      "steps": {{STEPS}},
+      "cfg": 1,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["54", 0],
+      "positive": ["93", 0],
+      "negative": ["93", 1],
+      "latent_image": ["93", 2]
+    },
+    "class_type": "KSampler"
+  },
+  "6": {
+    "inputs": {
+      "text": "{{PROMPT}}",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "7": {
+    "inputs": {
+      "text": "{{NEGATIVE_PROMPT}}",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "37": {
+    "inputs": {
+      "unet_name": "wan2.2_s2v_14B_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "52": {
+    "inputs": {
+      "image": "{{IMAGE}}"
+    },
+    "class_type": "LoadImage"
+  },
+  "54": {
+    "inputs": {
+      "shift": 8,
+      "model": ["107", 0]
+    },
+    "class_type": "ModelSamplingSD3"
+  },
+  "56": {
+    "inputs": {
+      "audio_encoder": ["57", 0],
+      "audio": ["58", 0]
+    },
+    "class_type": "AudioEncoderEncode"
+  },
+  "57": {
+    "inputs": {
+      "audio_encoder_name": "wav2vec2_large_english_fp16.safetensors"
+    },
+    "class_type": "AudioEncoderLoader"
+  },
+  "58": {
+    "inputs": {
+      "audio": "{{AUDIO}}"
+    },
+    "class_type": "LoadAudio"
+  },
+  "80": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["39", 0]
+    },
+    "class_type": "VAEDecode"
+  },
+  "82": {
+    "inputs": {
+      "fps": 16,
+      "images": ["80", 0],
+      "audio": ["58", 0]
+    },
+    "class_type": "CreateVideo"
+  },
+  "93": {
+    "inputs": {
+      "width": {{WIDTH}},
+      "height": {{HEIGHT}},
+      "length": {{FRAMES}},
+      "batch_size": 1,
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["39", 0],
+      "audio_encoder_output": ["56", 0],
+      "ref_image": ["52", 0]
+    },
+    "class_type": "WanSoundImageToVideo"
+  },
+  "107": {
+    "inputs": {
+      "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+      "strength_model": 1,
+      "model": ["37", 0]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "113": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "codec": "auto",
+      "video": ["82", 0]
+    },
+    "class_type": "SaveVideo"
+  }
+}
