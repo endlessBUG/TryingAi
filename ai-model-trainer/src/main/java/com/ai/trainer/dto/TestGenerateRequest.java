@@ -95,7 +95,12 @@ public class TestGenerateRequest {
 
     /**
      * 相机镜头动作 (用于相机控制视频生成)
-     * 可选值: Zoom In, Zoom Out, Pan Left, Pan Right, Tilt Up, Tilt Down, Static, Rotate
+     * 可选值: Zoom In, Zoom Out, Pan Left, Pan Right, Tilt Up, Tilt Down, Static, Clockwise, Anticlockwise
      */
     private String cameraPose;
+
+    /**
+     * 视频URL (base64或URL)，用于视频控制生成
+     */
+    private String videoUrl;
 }

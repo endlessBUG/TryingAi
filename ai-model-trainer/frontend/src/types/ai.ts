@@ -10,6 +10,7 @@ export type AIServiceType =
   | 'video_frame'
   | 'sound_to_video'
   | 'camera_control'
+  | 'video_control'
   | 'text_to_speech'
 
 /**
@@ -98,6 +99,7 @@ export interface TestGenerateRequest {
   referenceAudioUrl?: string
   referenceText?: string
   cameraPose?: string  // 相机镜头动作
+  videoUrl?: string    // 控制视频URL
 }
 
 /**
@@ -128,6 +130,7 @@ export const SERVICE_TYPE_LABELS: Record<AIServiceType, string> = {
   video_frame: '首尾帧视频',
   sound_to_video: '语音图片转视频',
   camera_control: '镜头控制',
+  video_control: '视频控制',
   text_to_speech: '文本转语音'
 }
 
@@ -170,6 +173,9 @@ export const PROVIDER_CONFIGS: Record<AIServiceType, ProviderConfig[]> = {
   ],
   camera_control: [
     { id: 'comfyui', name: 'ComfyUI', models: ['wan2.2-camera'] }
+  ],
+  video_control: [
+    { id: 'comfyui', name: 'ComfyUI', models: ['wan2.2-fun-control'] }
   ],
   text_to_speech: [
     { id: 'fishaudio', name: 'FishAudio', models: ['s2-pro'] },

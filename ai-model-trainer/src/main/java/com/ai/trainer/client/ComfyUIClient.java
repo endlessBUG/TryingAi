@@ -65,6 +65,7 @@ public class ComfyUIClient implements AIClient {
             case "video_frame" -> generateVideoFrame(config, request);
             case "sound_to_video" -> generateSoundToVideo(config, request);
             case "camera_control" -> generateCameraControlVideo(config, request);
+            case "video_control" -> generateVideoControl(config, request);
             default -> throw new Exception("ComfyUI不支持的服务类型: " + serviceType);
         };
     }
@@ -279,6 +280,54 @@ public class ComfyUIClient implements AIClient {
         return waitForVideoCompletion(config, promptId);
     }
 
+    /**
+     * 视频控制生成 (Wan2.2 Fun Control)
+     * 支持参考图片 + 控制视频（Canny边缘检测）生成新视频
+     */
+    private TestGenerateResult generateVideoControl(AIConfig config, TestGenerateRequest request) throws Exception {
+        if (request.getImageUrl() == null || request.getImageUrl().isEmpty()) {
+            throw new Exception("视频控制生成需要提供参考图片");
+        }
+        if (request.getVideoUrl() == null || request.getVideoUrl().isEmpty()) {
+            throw new Exception("视频控制生成需要提供控制视频");
+        }
+
+        String imageFilename = uploadFile(config, request.getImageUrl(), "image");
+        String videoFilename = uploadFile(config, request.getVideoUrl(), "video");
+        log.info("上传图片: {}, 视频: {}", imageFilename, videoFilename);
+
+        // 计算帧数：优先使用 frames，其次 duration（秒数），默认81帧≈5秒
+        int frames;
+        if (request.getFrames() != null && request.getFrames() > 0) {
+            frames = request.getFrames();
+        } else if (request.getDuration() != null && request.getDuration() > 0) {
+            frames = request.getDuration() * 16 + 1;
+        } else {
+            frames = 81;  // 默认5秒
+        }
+
+        // 使用更大的seed范围
+        long seed = request.getSeed() != null && request.getSeed() > 0
+            ? request.getSeed()
+            : (System.currentTimeMillis() * 1000 + (long)(Math.random() * 1000));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("prompt", request.getPrompt());
+        params.put("negativePrompt", request.getNegativePrompt());
+        params.put("image", imageFilename);
+        params.put("video", videoFilename);
+        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 640));
+        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 640));
+        params.put("frames", String.valueOf(frames));
+        params.put("steps", String.valueOf(request.getSteps() != null ? request.getSteps() : 4));
+        params.put("seed", String.valueOf(seed));
+
+        String workflowJson = loadWorkflowTemplate(config, params);
+        log.info("===== 视频控制生成工作流 =====\n{}", workflowJson);
+        String promptId = submitPrompt(config, workflowJson);
+        return waitForVideoCompletion(config, promptId);
+    }
+
     // ==================== 辅助方法 ====================
 
     /**
@@ -355,6 +404,10 @@ public class ComfyUIClient implements AIClient {
                 // Wan2.2 相机控制视频
                 yield "wan22_camera.json";
             }
+            case "video_control" -> {
+                // Wan2.2 视频控制生成
+                yield "wan22_fun_control.json";
+            }
             default -> null;
         };
     }
@@ -397,6 +450,7 @@ public class ComfyUIClient implements AIClient {
         int steps = Integer.parseInt(params.getOrDefault("steps", "30"));
         String image = params.getOrDefault("image", "");
         String audio = params.getOrDefault("audio", "");
+        String video = params.getOrDefault("video", "");
         String firstFrame = params.getOrDefault("firstFrame", "");
         String lastFrame = params.getOrDefault("lastFrame", "");
         String cameraPose = params.getOrDefault("camera_pose", "Zoom In");
@@ -412,6 +466,7 @@ public class ComfyUIClient implements AIClient {
         content = content.replace("{{STEPS_HALF}}", String.valueOf(steps / 2));
         content = content.replace("{{IMAGE}}", image);
         content = content.replace("{{AUDIO}}", audio);
+        content = content.replace("{{VIDEO}}", video);
         content = content.replace("{{FIRST_FRAME}}", firstFrame);
         content = content.replace("{{LAST_FRAME}}", lastFrame);
         content = content.replace("{{CAMERA_POSE}}", cameraPose);
@@ -561,6 +616,8 @@ public class ComfyUIClient implements AIClient {
                     extension = "png";
                 } else if (mimeType.contains("webp")) {
                     extension = "webp";
+                } else if (mimeType.contains("gif")) {
+                    extension = "gif";
                 } else if (mimeType.contains("wav")) {
                     extension = "wav";
                 } else if (mimeType.contains("mp3")) {
@@ -569,6 +626,12 @@ public class ComfyUIClient implements AIClient {
                     extension = "m4a";
                 } else if (mimeType.contains("mpeg") || mimeType.contains("mp4")) {
                     extension = "mp4";
+                } else if (mimeType.contains("webm")) {
+                    extension = "webm";
+                } else if (mimeType.contains("quicktime") || mimeType.contains("mov")) {
+                    extension = "mov";
+                } else if (mimeType.contains("x-msvideo") || mimeType.contains("avi")) {
+                    extension = "avi";
                 }
             } else {
                 throw new Exception("无效的data URL格式");

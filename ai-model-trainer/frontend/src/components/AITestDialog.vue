@@ -385,6 +385,83 @@
           </el-form-item>
         </el-form>
 
+        <!-- 视频控制 -->
+        <el-form v-else-if="config?.serviceType === 'video_control'" :model="form" label-width="100px">
+          <el-form-item label="参考图片" required>
+            <el-upload
+              class="image-uploader i2i-uploader"
+              :show-file-list="false"
+              :before-upload="handleImageUpload"
+              accept="image/*"
+            >
+              <img v-if="form.imageUrl" :src="form.imageUrl" class="uploaded-image" />
+              <el-icon v-else class="upload-icon"><Plus /></el-icon>
+            </el-upload>
+            <el-button
+              v-if="form.imageUrl"
+              type="primary"
+              link
+              size="small"
+              class="i2i-preview-btn"
+              @click.stop="openFullscreen('image', form.imageUrl)"
+            >
+              点击预览大图
+            </el-button>
+          </el-form-item>
+          <el-form-item label="控制视频" required>
+            <el-upload
+              class="video-uploader"
+              :show-file-list="false"
+              :before-upload="handleVideoUpload"
+              accept="video/*,.mp4,.webm,.mov,.avi"
+            >
+              <div v-if="form.videoUrl" class="uploaded-video">
+                <el-icon><VideoPlay /></el-icon>
+                <span>视频已上传</span>
+              </div>
+              <div v-else class="upload-placeholder">
+                <el-icon class="upload-icon"><Plus /></el-icon>
+                <span>点击上传控制视频</span>
+              </div>
+            </el-upload>
+            <div class="form-tip">上传视频将提取Canny边缘作为控制信号</div>
+          </el-form-item>
+          <el-form-item label="提示词" required>
+            <el-input
+              v-model="form.prompt"
+              type="textarea"
+              :rows="3"
+              placeholder="描述视频内容..."
+            />
+          </el-form-item>
+          <el-form-item label="负面提示词">
+            <el-input
+              v-model="form.negativePrompt"
+              type="textarea"
+              :rows="2"
+              placeholder="不想出现的内容..."
+            />
+          </el-form-item>
+          <el-form-item label="分辨率">
+            <div class="resolution-inputs">
+              <el-input-number v-model="form.width" :min="256" :max="2048" :step="64" />
+              <span class="resolution-x">x</span>
+              <el-input-number v-model="form.height" :min="256" :max="2048" :step="64" />
+            </div>
+          </el-form-item>
+          <el-form-item label="时长(秒)">
+            <el-input-number v-model="form.durationSeconds" :min="1" :max="10" style="width: 100%" />
+            <div class="form-tip">视频时长，帧数 = {{ form.durationSeconds }} × 16 + 1 = {{ form.durationSeconds * 16 + 1 }} 帧</div>
+          </el-form-item>
+          <el-form-item label="采样步数">
+            <el-input-number v-model="form.steps" :min="1" :max="100" style="width: 100%" />
+            <div class="form-tip">推荐4步（使用4步蒸馏LoRA加速）</div>
+          </el-form-item>
+          <el-form-item label="随机种子">
+            <el-input-number v-model="form.seed" :min="-1" :max="999999999" style="width: 100%" />
+          </el-form-item>
+        </el-form>
+
         <!-- 文本转语音 -->
         <el-form v-else-if="config?.serviceType === 'text_to_speech'" :model="form" label-width="100px">
           <el-form-item label="TTS模式">
@@ -509,7 +586,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Document, Loading, Headset } from '@element-plus/icons-vue'
+import { Plus, Document, Loading, Headset, VideoPlay } from '@element-plus/icons-vue'
 import { aiConfigAPI } from '@/api/aiConfig'
 import type { AIConfig, TestGenerateResult } from '@/types/ai'
 
@@ -573,13 +650,14 @@ const form = reactive({
   voice: '',
   steps: 4,  // 默认4步，resetForm会根据配置更新
   seed: -1,
-  durationSeconds: 9,  // 默认9秒
-  frames: 144,  // 9秒 * 16帧
+  durationSeconds: 5,  // 默认5秒
+  frames: 81,  // 5秒 * 16帧 + 1
   negativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
   ttsMode: 'speech' as 'speech' | 'clone',
   referenceAudioUrl: '',
   referenceText: '',
-  cameraPose: 'Zoom In'  // 镜头动作
+  cameraPose: 'Zoom In',  // 镜头动作
+  videoUrl: ''  // 控制视频URL
 })
 
 // 帧数自动计算联动（帧数 = 秒数 * 16 + 1，Wan模型推荐）
@@ -600,13 +678,13 @@ const resetForm = () => {
   form.audioUrl = ''
   form.firstFrameUrl = ''
   form.lastFrameUrl = ''
-  form.width = 720  // 镜头控制默认720
-  form.height = 720  // 镜头控制默认720
+  form.width = 640
+  form.height = 640
   form.voice = ''
   form.steps = getDefaultSteps(props.config)
   form.seed = -1
-  // 镜头控制默认5秒（81帧），其他视频类型默认9秒
-  if (props.config?.serviceType === 'camera_control') {
+  // 镜头控制和视频控制默认5秒（81帧），其他视频类型默认9秒
+  if (props.config?.serviceType === 'camera_control' || props.config?.serviceType === 'video_control') {
     form.durationSeconds = 5
     form.frames = 81
   } else {
@@ -618,6 +696,7 @@ const resetForm = () => {
   form.referenceAudioUrl = ''
   form.referenceText = ''
   form.cameraPose = 'Zoom In'
+  form.videoUrl = ''
 }
 
 /**
@@ -635,6 +714,7 @@ const WORKFLOW_DEFAULT_STEPS: Record<string, number> = {
   'wan22_t2v': 4,  // Wan2.2 文生视频 (4步蒸馏版)
   'wan22_s2v': 4,  // Wan2.2 语音图片转视频
   'wan22_camera': 4,  // Wan2.2 相机控制视频
+  'wan22_fun_control': 4,  // Wan2.2 视频控制
   'wan': 4,        // Wan 其他视频模型 (默认4步)
 }
 
@@ -695,6 +775,15 @@ const handleAudioUpload = (file: File) => {
   return false
 }
 
+const handleVideoUpload = (file: File) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    form.videoUrl = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  return false
+}
+
 const handleReferenceAudioUpload = (file: File) => {
   const reader = new FileReader()
   reader.onload = (e) => {
@@ -743,6 +832,17 @@ const handleTest = async () => {
     }
   }
 
+  if (props.config.serviceType === 'video_control') {
+    if (!form.imageUrl) {
+      ElMessage.warning('请上传参考图片')
+      return
+    }
+    if (!form.videoUrl) {
+      ElMessage.warning('请上传控制视频')
+      return
+    }
+  }
+
   if (props.config.serviceType === 'text_to_speech' && form.ttsMode === 'clone') {
     if (!form.referenceAudioUrl) {
       ElMessage.warning('请上传参考音频')
@@ -780,7 +880,8 @@ const handleTest = async () => {
       ttsMode: form.ttsMode,
       referenceAudioUrl: form.referenceAudioUrl,
       referenceText: form.referenceText,
-      cameraPose: form.cameraPose  // 镜头动作
+      cameraPose: form.cameraPose,  // 镜头动作
+      videoUrl: form.videoUrl  // 控制视频
     })
     console.log('API Response:', res)
     console.log('imageUrl:', res.data?.imageUrl)
@@ -1025,6 +1126,28 @@ const handleClose = () => {
 
 .audio-uploader:hover {
   border-color: #409eff;
+}
+
+.video-uploader {
+  width: 100%;
+  height: 80px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.video-uploader:hover {
+  border-color: #409eff;
+}
+
+.uploaded-video {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #67c23a;
 }
 
 .upload-placeholder {
