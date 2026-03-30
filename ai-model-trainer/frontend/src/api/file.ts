@@ -30,7 +30,7 @@ export function uploadImageArchive(file: File): Promise<UploadResponse> {
     method: 'post',
     data: formData,
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 600000
+    timeout: 1800000
   })
 }
 
@@ -59,7 +59,7 @@ export function preprocessImages(
     url: `/files/datasets/${datasetId}/preprocess`,
     method: 'post',
     params: { resolution },
-    timeout: 600000
+    timeout: 1800000
   })
 }
 
@@ -88,7 +88,7 @@ export function evaluateQuality(
     url: `/files/datasets/${datasetId}/evaluate-quality`,
     method: 'post',
     params: { generatorId },
-    timeout: 600000
+    timeout: 1800000
   })
 }
 

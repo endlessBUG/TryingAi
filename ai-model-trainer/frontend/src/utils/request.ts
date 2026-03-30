@@ -7,7 +7,7 @@ import { ElMessage } from 'element-plus'
 // 创建axios实例
 const service: AxiosInstance = axios.create({
   baseURL: '/api',
-  timeout: 300000, // 5分钟超时（用于文件上传和训练）
+  timeout: 1800000, // 30分钟超时
   headers: {
     'Content-Type': 'application/json'
   }

@@ -35,7 +35,7 @@ public class AIConfigController {
     private final PathMatchingResourcePatternResolver resourceResolver = new PathMatchingResourcePatternResolver();
     private final OkHttpClient streamingClient = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(300, TimeUnit.SECONDS)
+            .readTimeout(1800, TimeUnit.SECONDS)  // 30分钟超时
             .build();
 
     /**

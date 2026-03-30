@@ -34,14 +34,14 @@ public class ComfyUIClient implements AIClient {
     private final ObjectMapper objectMapper;
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(600, TimeUnit.SECONDS)  // 10分钟超时
+            .readTimeout(1800, TimeUnit.SECONDS)  // 30分钟超时
             .writeTimeout(120, TimeUnit.SECONDS)
             .addInterceptor(new LoggingInterceptor())
             .build();
 
     @Override
     public void testConnection(AIConfig config) throws Exception {
-        String url = normalizeBaseUrl(config.getBaseUrl()) + "/system_stats";
+        String url = normalizeBaseUrl(config.getBaseUrl()) + "/api/system_stats";
         Request request = new Request.Builder()
                 .url(url)
                 .get()
@@ -123,8 +123,8 @@ public class ComfyUIClient implements AIClient {
         Map<String, String> params = new HashMap<>();
         params.put("prompt", request.getPrompt());
         params.put("negativePrompt", request.getNegativePrompt());
-        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 720));
-        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 1280));
+        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 640));
+        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 640));
         params.put("frames", String.valueOf(frames));
         params.put("steps", String.valueOf(request.getSteps() != null ? request.getSteps() : 30));
         params.put("seed", String.valueOf(request.getSeed() != null && request.getSeed() > 0 ? request.getSeed() : System.currentTimeMillis() % 1000000000));
@@ -147,22 +147,28 @@ public class ComfyUIClient implements AIClient {
         String lastFrameFilename = uploadFile(config, request.getLastFrameUrl(), "image");
         log.info("上传首帧文件: {}, 尾帧文件: {}", firstFrameFilename, lastFrameFilename);
 
-        // 前端已经将秒数转换为帧数，直接使用
-        int frames = request.getDuration() != null ? request.getDuration() : 80;
+        // 前端传帧数（已包含 +1），优先使用 frames 字段，其次 duration，最后默认81帧
+        int frames = request.getFrames() != null ? request.getFrames() :
+                     (request.getDuration() != null ? request.getDuration() : 81);
 
         Map<String, String> params = new HashMap<>();
         params.put("prompt", request.getPrompt());
         params.put("negativePrompt", request.getNegativePrompt());
         params.put("firstFrame", firstFrameFilename);
         params.put("lastFrame", lastFrameFilename);
-        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 720));
-        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 1280));
+        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 640));
+        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 640));
         params.put("frames", String.valueOf(frames));
         params.put("steps", String.valueOf(request.getSteps() != null ? request.getSteps() : 8));
-        params.put("seed", String.valueOf(request.getSeed() != null && request.getSeed() > 0 ? request.getSeed() : System.currentTimeMillis() % 1000000000));
+        // 使用更大的seed范围，与ComfyUI保持一致
+        long seed = request.getSeed() != null && request.getSeed() > 0
+            ? request.getSeed()
+            : (System.currentTimeMillis() * 1000 + (long)(Math.random() * 1000));
+        params.put("seed", String.valueOf(seed));
 
+        // 使用纯prompt模板（无extra_data）
         String workflowJson = loadWorkflowTemplate(config, params);
-        log.info("===== 首尾帧视频生成工作流 =====\n{}", workflowJson);
+        log.info("===== 首尾帧视频生成请求 =====\n{}", workflowJson);
         String promptId = submitPrompt(config, workflowJson);
         return waitForVideoCompletion(config, promptId);
     }
@@ -180,16 +186,16 @@ public class ComfyUIClient implements AIClient {
 
         String imageFilename = uploadFile(config, request.getImageUrl(), "image");
         String audioFilename = uploadFile(config, request.getAudioUrl(), "audio");
-        // 前端已经将秒数转换为帧数，直接使用
-        int frames = request.getDuration() != null ? request.getDuration() : 80;
+        // 前端已经将秒数转换为帧数，Wan模型生成的视频会少16帧，需要补上
+        int frames = request.getDuration() != null ? request.getDuration() + 16 : 81;
 
         Map<String, String> params = new HashMap<>();
         params.put("prompt", request.getPrompt());
         params.put("negativePrompt", request.getNegativePrompt());
         params.put("image", imageFilename);
         params.put("audio", audioFilename);
-        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 720));
-        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 1280));
+        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 640));
+        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 640));
         params.put("frames", String.valueOf(frames));
         params.put("steps", String.valueOf(request.getSteps() != null ? request.getSteps() : 8));
         params.put("seed", String.valueOf(request.getSeed() != null && request.getSeed() > 0 ? request.getSeed() : System.currentTimeMillis() % 1000000000));
@@ -301,11 +307,15 @@ public class ComfyUIClient implements AIClient {
 
         // 设置默认参数
         String prompt = params.getOrDefault("prompt", "");
-        String negativePrompt = params.getOrDefault("negativePrompt", "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走");
+        String negativePrompt = params.get("negativePrompt");
+        // 如果负面提示词为空，使用默认值
+        if (negativePrompt == null || negativePrompt.trim().isEmpty()) {
+            negativePrompt = "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走";
+        }
         int width = Integer.parseInt(params.getOrDefault("width", "1024"));
         int height = Integer.parseInt(params.getOrDefault("height", "1024"));
         int frames = Integer.parseInt(params.getOrDefault("frames", "81"));
-        int seed = Integer.parseInt(params.getOrDefault("seed", String.valueOf(System.currentTimeMillis() % 1000000000)));
+        long seed = Long.parseLong(params.getOrDefault("seed", String.valueOf(System.currentTimeMillis())));
         int steps = Integer.parseInt(params.getOrDefault("steps", "30"));
         String image = params.getOrDefault("image", "");
         String audio = params.getOrDefault("audio", "");
@@ -345,14 +355,97 @@ public class ComfyUIClient implements AIClient {
      * 提交工作流到ComfyUI
      */
     private String submitPrompt(AIConfig config, String workflowJson) throws Exception {
-        String url = normalizeBaseUrl(config.getBaseUrl()) + "/prompt";
+        // 使用 /api/prompt 路径（ComfyUI 标准 API 路径）
+        String url = normalizeBaseUrl(config.getBaseUrl()) + "/api/prompt";
 
-        String body = "{\"prompt\":" + workflowJson + "}";
+        // 生成client_id并构建完整的请求体，包含extra_data
+        String clientId = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 32);
+        // 添加 extra_data 节点，ComfyUI 某些工作流可能需要
+        String body = "{\"client_id\":\"" + clientId + "\",\"prompt\":" + workflowJson + ",\"extra_data\":{}}";
+
+        log.info("提交到ComfyUI的请求: client_id={}", clientId);
+        log.debug("完整请求体: {}", body);
 
         Request request = new Request.Builder()
                 .url(url)
                 .addHeader("Content-Type", "application/json")
                 .post(RequestBody.create(body, MediaType.parse("application/json")))
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "";
+                throw new Exception("提交工作流失败: HTTP " + response.code() + " - " + errorBody);
+            }
+            JsonNode json = objectMapper.readTree(response.body().string());
+            return json.path("prompt_id").asText();
+        }
+    }
+
+    /**
+     * 加载完整工作流模板（包含extra_data），用于首尾帧等需要完整结构的工作流
+     */
+    private String loadFullWorkflowTemplate(AIConfig config, Map<String, String> params) throws Exception {
+        String workflowFilename = getWorkflowFilename(config);
+        if (workflowFilename == null || workflowFilename.isEmpty()) {
+            throw new Exception("未配置工作流文件");
+        }
+
+        // 尝试加载完整模板（_full后缀）
+        String resourcePath = "comfyui-workflows/" + workflowFilename.replace(".json", "_full.json");
+        var inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath);
+        if (inputStream == null) {
+            // 如果没有完整模板，回退到普通模板
+            return loadWorkflowTemplate(config, params);
+        }
+
+        String content = new String(inputStream.readAllBytes());
+        inputStream.close();
+        log.info("加载完整工作流模板: {}", resourcePath);
+
+        // 设置默认参数
+        String prompt = params.getOrDefault("prompt", "");
+        String negativePrompt = params.get("negativePrompt");
+        if (negativePrompt == null || negativePrompt.trim().isEmpty()) {
+            negativePrompt = "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走";
+        }
+        String width = params.getOrDefault("width", "640");
+        String height = params.getOrDefault("height", "640");
+        String frames = params.getOrDefault("frames", "81");
+        String seed = params.getOrDefault("seed", String.valueOf(System.currentTimeMillis()));
+        String firstFrame = params.getOrDefault("firstFrame", "");
+        String lastFrame = params.getOrDefault("lastFrame", "");
+
+        // 生成新的 client_id
+        String clientId = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 32);
+
+        // 替换占位符
+        content = content.replace("\"0b7b692fc4f2463dbde57753e9c099cc\"", "\"" + clientId + "\"");
+        content = content.replace("{{PROMPT}}", escapeJson(prompt));
+        content = content.replace("{{NEGATIVE_PROMPT}}", escapeJson(negativePrompt));
+        content = content.replace("{{WIDTH}}", width);
+        content = content.replace("{{HEIGHT}}", height);
+        content = content.replace("{{FRAMES}}", frames);
+        content = content.replace("{{SEED}}", seed);
+        content = content.replace("{{FIRST_FRAME}}", firstFrame);
+        content = content.replace("{{LAST_FRAME}}", lastFrame);
+
+        return content;
+    }
+
+    /**
+     * 提交完整工作流JSON到ComfyUI（直接提交，不包装）
+     */
+    private String submitFullPrompt(AIConfig config, String fullJson) throws Exception {
+        // 使用 /api/prompt 路径（ComfyUI 标准 API 路径）
+        String url = normalizeBaseUrl(config.getBaseUrl()) + "/api/prompt";
+
+        log.info("提交完整工作流到ComfyUI: URL={}", url);
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(fullJson, MediaType.parse("application/json")))
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
@@ -394,6 +487,8 @@ public class ComfyUIClient implements AIClient {
                     extension = "mp3";
                 } else if (mimeType.contains("m4a")) {
                     extension = "m4a";
+                } else if (mimeType.contains("mpeg") || mimeType.contains("mp4")) {
+                    extension = "mp4";
                 }
             } else {
                 throw new Exception("无效的data URL格式");
@@ -406,41 +501,66 @@ public class ComfyUIClient implements AIClient {
         byte[] fileData = Base64.getDecoder().decode(base64Data);
         String filename = fileType + "_" + System.currentTimeMillis() + "." + extension;
 
-        // 构建multipart请求
-        String url = normalizeBaseUrl(config.getBaseUrl()) + "/upload/image";
+        // 根据文件类型选择上传端点
+        // ComfyUI 服务器可能配置了 /api 前缀，需要兼容处理
+        String baseUrl = normalizeBaseUrl(config.getBaseUrl());
+        String formFieldName = "image"; // 表单字段名
 
+        // 构建multipart请求
         RequestBody requestBody = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("image", filename,
+                .addFormDataPart(formFieldName, filename,
                         RequestBody.create(fileData, MediaType.parse("application/octet-stream")))
                 .addFormDataPart("overwrite", "true")
                 .build();
 
-        Request request = new Request.Builder()
-                .url(url)
-                .post(requestBody)
-                .build();
+        // 尝试不同的上传端点（兼容标准ComfyUI和带/api前缀的配置）
+        String[] uploadEndpoints = {"/upload/image", "/api/upload/image"};
+        Exception lastException = null;
 
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new Exception("上传文件失败: HTTP " + response.code());
-            }
-            JsonNode json = objectMapper.readTree(response.body().string());
-            String uploadedName = json.path("name").asText();
-            String subfolder = json.path("subfolder").asText();
+        for (String endpoint : uploadEndpoints) {
+            String url = baseUrl + endpoint;
+            log.info("尝试上传文件到ComfyUI: URL={}, filename={}, fileType={}, size={} bytes", url, filename, fileType, fileData.length);
 
-            if (!subfolder.isEmpty()) {
-                return subfolder + "/" + uploadedName;
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(requestBody)
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    JsonNode json = objectMapper.readTree(response.body().string());
+                    String uploadedName = json.path("name").asText();
+                    String subfolder = json.path("subfolder").asText();
+                    log.info("上传成功: endpoint={}, filename={}, subfolder={}", endpoint, uploadedName, subfolder);
+
+                    if (!subfolder.isEmpty()) {
+                        return subfolder + "/" + uploadedName;
+                    }
+                    return uploadedName;
+                } else if (response.code() == 404) {
+                    log.warn("端点 {} 返回404，尝试下一个端点", endpoint);
+                    lastException = new Exception("上传文件失败: HTTP 404 - 端点不存在: " + endpoint);
+                } else {
+                    String errorBody = response.body() != null ? response.body().string() : "";
+                    log.error("上传文件失败: HTTP {}, URL={}, error={}", response.code(), url, errorBody);
+                    lastException = new Exception("上传文件失败: HTTP " + response.code() + " - " + errorBody);
+                }
+            } catch (Exception e) {
+                log.warn("端点 {} 上传失败: {}", endpoint, e.getMessage());
+                lastException = e;
             }
-            return uploadedName;
         }
+
+        // 所有端点都失败了
+        throw lastException != null ? lastException : new Exception("上传文件失败: 所有端点都不可用");
     }
 
     /**
      * 等待图片生成完成
      */
     private TestGenerateResult waitForCompletion(AIConfig config, String promptId) throws Exception {
-        String url = normalizeBaseUrl(config.getBaseUrl()) + "/history/" + promptId;
+        String url = normalizeBaseUrl(config.getBaseUrl()) + "/api/history/" + promptId;
 
         // 轮询等待完成，最多等待5分钟
         long startTime = System.currentTimeMillis();
@@ -479,7 +599,7 @@ public class ComfyUIClient implements AIClient {
      * 等待视频生成完成
      */
     private TestGenerateResult waitForVideoCompletion(AIConfig config, String promptId) throws Exception {
-        String url = normalizeBaseUrl(config.getBaseUrl()) + "/history/" + promptId;
+        String url = normalizeBaseUrl(config.getBaseUrl()) + "/api/history/" + promptId;
 
         // 视频生成时间更长，最多等待30分钟
         long startTime = System.currentTimeMillis();
@@ -642,7 +762,7 @@ public class ComfyUIClient implements AIClient {
      */
     private byte[] getFile(AIConfig config, String filename, String subfolder, String type) throws Exception {
         StringBuilder urlBuilder = new StringBuilder(normalizeBaseUrl(config.getBaseUrl()));
-        urlBuilder.append("/view?filename=").append(filename);
+        urlBuilder.append("/api/view?filename=").append(filename);
         urlBuilder.append("&type=").append(type);
         if (subfolder != null && !subfolder.isEmpty()) {
             urlBuilder.append("&subfolder=").append(subfolder);
@@ -666,7 +786,7 @@ public class ComfyUIClient implements AIClient {
      */
     public String getFileStreamUrl(AIConfig config, String filename, String subfolder, String type) {
         StringBuilder urlBuilder = new StringBuilder(normalizeBaseUrl(config.getBaseUrl()));
-        urlBuilder.append("/view?filename=").append(filename);
+        urlBuilder.append("/api/view?filename=").append(filename);
         urlBuilder.append("&type=").append(type);
         if (subfolder != null && !subfolder.isEmpty()) {
             urlBuilder.append("&subfolder=").append(subfolder);
@@ -688,7 +808,7 @@ public class ComfyUIClient implements AIClient {
      * 获取任务状态
      */
     public TestGenerateResult getTaskStatus(AIConfig config, String promptId) throws Exception {
-        String url = normalizeBaseUrl(config.getBaseUrl()) + "/history/" + promptId;
+        String url = normalizeBaseUrl(config.getBaseUrl()) + "/api/history/" + promptId;
 
         Request request = new Request.Builder()
                 .url(url)

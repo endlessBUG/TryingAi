@@ -154,6 +154,16 @@
                 <img v-if="form.firstFrameUrl" :src="form.firstFrameUrl" class="uploaded-image" />
                 <el-icon v-else class="upload-icon"><Plus /></el-icon>
               </el-upload>
+              <el-button
+                v-if="form.firstFrameUrl"
+                type="primary"
+                link
+                size="small"
+                class="frame-preview-btn"
+                @click.stop="openFullscreen('image', form.firstFrameUrl)"
+              >
+                点击预览大图
+              </el-button>
             </div>
             <div class="frame-item">
               <div class="frame-label">尾帧图片 *</div>
@@ -166,6 +176,16 @@
                 <img v-if="form.lastFrameUrl" :src="form.lastFrameUrl" class="uploaded-image" />
                 <el-icon v-else class="upload-icon"><Plus /></el-icon>
               </el-upload>
+              <el-button
+                v-if="form.lastFrameUrl"
+                type="primary"
+                link
+                size="small"
+                class="frame-preview-btn"
+                @click.stop="openFullscreen('image', form.lastFrameUrl)"
+              >
+                点击预览大图
+              </el-button>
             </div>
           </div>
           <el-form-item label="提示词" required>
@@ -192,7 +212,12 @@
             </div>
           </el-form-item>
           <el-form-item label="时长(秒)">
-            <el-input-number v-model="form.durationSeconds" :min="1" :max="30" style="width: 100%" />
+            <el-input-number v-model="form.durationSeconds" :min="1" :max="10" style="width: 100%" />
+            <div class="form-tip">视频时长，帧数 = {{ form.durationSeconds }} × 16 + 1 = {{ form.durationSeconds * 16 + 1 }} 帧</div>
+          </el-form-item>
+          <el-form-item label="帧数">
+            <el-input-number v-model="form.frames" :min="16" :max="160" :step="16" style="width: 100%" disabled />
+            <div class="form-tip">自动计算：帧数 = 时长 × 16fps</div>
           </el-form-item>
           <el-form-item label="采样步数">
             <el-input-number v-model="form.steps" :min="1" :max="100" style="width: 100%" />
@@ -456,10 +481,16 @@ const form = reactive({
   steps: 30,
   seed: -1,
   durationSeconds: 5,
-  negativePrompt: '',
+  frames: 81,
+  negativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
   ttsMode: 'speech' as 'speech' | 'clone',
   referenceAudioUrl: '',
   referenceText: ''
+})
+
+// 帧数自动计算联动（帧数 = 秒数 * 16 + 1，Wan模型推荐）
+watch(() => form.durationSeconds, (val) => {
+  form.frames = val * 16 + 1
 })
 
 watch(() => props.modelValue, (val) => {
@@ -481,7 +512,8 @@ const resetForm = () => {
   form.steps = getDefaultSteps(props.config)
   form.seed = -1
   form.durationSeconds = 5
-  form.negativePrompt = ''
+  form.frames = 80
+  form.negativePrompt = '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走'
   form.ttsMode = 'speech'
   form.referenceAudioUrl = ''
   form.referenceText = ''
@@ -620,8 +652,8 @@ const handleTest = async () => {
       voice: form.voice,
       steps: form.steps,
       seed: form.seed,
-      duration: form.durationSeconds * 16, // 秒转帧
-      frames: form.durationSeconds * 16,
+      duration: form.durationSeconds * 16 + 1, // 秒转帧，Wan模型需要 +1 帧
+      frames: form.durationSeconds * 16 + 1,   // 与显示给用户的帧数一致
       negativePrompt: form.negativePrompt,
       ttsMode: form.ttsMode,
       referenceAudioUrl: form.referenceAudioUrl,
@@ -797,7 +829,8 @@ const handleClose = () => {
 .uploaded-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #f5f7fa;
 }
 
 .upload-icon {
@@ -857,7 +890,12 @@ const handleClose = () => {
 
 .image-uploader.frame {
   width: 100%;
-  height: 150px;
+  height: 250px;
+}
+
+.frame-preview-btn {
+  display: block;
+  margin: 4px auto 0;
 }
 
 .resolution-inputs {
