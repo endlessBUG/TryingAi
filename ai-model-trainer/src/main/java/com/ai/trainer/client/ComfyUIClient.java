@@ -64,6 +64,7 @@ public class ComfyUIClient implements AIClient {
             case "video" -> generateVideo(config, request);
             case "video_frame" -> generateVideoFrame(config, request);
             case "sound_to_video" -> generateSoundToVideo(config, request);
+            case "camera_control" -> generateCameraControlVideo(config, request);
             default -> throw new Exception("ComfyUI不支持的服务类型: " + serviceType);
         };
     }
@@ -228,6 +229,56 @@ public class ComfyUIClient implements AIClient {
         return waitForVideoCompletion(config, promptId);
     }
 
+    /**
+     * 相机控制视频生成 (Camera Control)
+     * WAN2.2 Fun Camera 使用 HighNoise/LowNoise 双模型 + 4步LoRA
+     * 支持相机动作: Zoom In, Zoom Out, Pan Left, Pan Right, Tilt Up, Tilt Down, Static 等
+     */
+    private TestGenerateResult generateCameraControlVideo(AIConfig config, TestGenerateRequest request) throws Exception {
+        if (request.getImageUrl() == null || request.getImageUrl().isEmpty()) {
+            throw new Exception("相机控制视频生成需要提供输入图片");
+        }
+
+        String imageFilename = uploadFile(config, request.getImageUrl(), "image");
+        log.info("上传图片: {}", imageFilename);
+
+        // 相机控制参数：从请求获取或使用默认值
+        String cameraPose = request.getCameraPose() != null && !request.getCameraPose().isEmpty()
+            ? request.getCameraPose()
+            : "Zoom In";  // 默认镜头动作
+
+        // 计算帧数：优先使用 frames，其次 duration（秒数），默认81帧≈5秒
+        int frames;
+        if (request.getFrames() != null && request.getFrames() > 0) {
+            frames = request.getFrames();
+        } else if (request.getDuration() != null && request.getDuration() > 0) {
+            frames = request.getDuration() * 16;
+        } else {
+            frames = 81;  // 默认5秒
+        }
+
+        // 使用更大的seed范围
+        long seed = request.getSeed() != null && request.getSeed() > 0
+            ? request.getSeed()
+            : (System.currentTimeMillis() * 1000 + (long)(Math.random() * 1000));
+
+        Map<String, String> params = new HashMap<>();
+        params.put("prompt", request.getPrompt());
+        params.put("negativePrompt", request.getNegativePrompt());
+        params.put("image", imageFilename);
+        params.put("width", String.valueOf(request.getWidth() != null ? request.getWidth() : 720));
+        params.put("height", String.valueOf(request.getHeight() != null ? request.getHeight() : 720));
+        params.put("frames", String.valueOf(frames));
+        params.put("steps", String.valueOf(request.getSteps() != null ? request.getSteps() : 4));
+        params.put("camera_pose", cameraPose);
+        params.put("seed", String.valueOf(seed));
+
+        String workflowJson = loadWorkflowTemplate(config, params);
+        log.info("===== 相机控制视频生成工作流 =====\n{}", workflowJson);
+        String promptId = submitPrompt(config, workflowJson);
+        return waitForVideoCompletion(config, promptId);
+    }
+
     // ==================== 辅助方法 ====================
 
     /**
@@ -300,6 +351,10 @@ public class ComfyUIClient implements AIClient {
                 // Wan2.2 语音图片转视频
                 yield "wan22_s2v.json";
             }
+            case "camera_control" -> {
+                // Wan2.2 相机控制视频
+                yield "wan22_camera.json";
+            }
             default -> null;
         };
     }
@@ -344,6 +399,7 @@ public class ComfyUIClient implements AIClient {
         String audio = params.getOrDefault("audio", "");
         String firstFrame = params.getOrDefault("firstFrame", "");
         String lastFrame = params.getOrDefault("lastFrame", "");
+        String cameraPose = params.getOrDefault("camera_pose", "Zoom In");
 
         // 替换占位符
         content = content.replace("{{PROMPT}}", escapeJson(prompt));
@@ -358,6 +414,7 @@ public class ComfyUIClient implements AIClient {
         content = content.replace("{{AUDIO}}", audio);
         content = content.replace("{{FIRST_FRAME}}", firstFrame);
         content = content.replace("{{LAST_FRAME}}", lastFrame);
+        content = content.replace("{{CAMERA_POSE}}", cameraPose);
 
         return content;
     }

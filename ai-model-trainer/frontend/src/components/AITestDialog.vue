@@ -312,6 +312,79 @@
           </el-form-item>
         </el-form>
 
+        <!-- 相机控制视频 -->
+        <el-form v-else-if="config?.serviceType === 'camera_control'" :model="form" label-width="100px">
+          <el-form-item label="输入图片" required>
+            <el-upload
+              class="image-uploader i2i-uploader"
+              :show-file-list="false"
+              :before-upload="handleImageUpload"
+              accept="image/*"
+            >
+              <img v-if="form.imageUrl" :src="form.imageUrl" class="uploaded-image" />
+              <el-icon v-else class="upload-icon"><Plus /></el-icon>
+            </el-upload>
+            <el-button
+              v-if="form.imageUrl"
+              type="primary"
+              link
+              size="small"
+              class="i2i-preview-btn"
+              @click.stop="openFullscreen('image', form.imageUrl)"
+            >
+              点击预览大图
+            </el-button>
+          </el-form-item>
+          <el-form-item label="镜头动作" required>
+            <el-select v-model="form.cameraPose" style="width: 100%">
+              <el-option label="放大 (Zoom In)" value="Zoom In" />
+              <el-option label="缩小 (Zoom Out)" value="Zoom Out" />
+              <el-option label="左移 (Pan Left)" value="Pan Left" />
+              <el-option label="右移 (Pan Right)" value="Pan Right" />
+              <el-option label="上移 (Tilt Up)" value="Tilt Up" />
+              <el-option label="下移 (Tilt Down)" value="Tilt Down" />
+              <el-option label="静止 (Static)" value="Static" />
+              <el-option label="顺时针旋转" value="Clockwise" />
+              <el-option label="逆时针旋转" value="Anticlockwise" />
+            </el-select>
+            <div class="form-tip">选择镜头运动方式</div>
+          </el-form-item>
+          <el-form-item label="提示词" required>
+            <el-input
+              v-model="form.prompt"
+              type="textarea"
+              :rows="3"
+              placeholder="描述视频内容..."
+            />
+          </el-form-item>
+          <el-form-item label="负面提示词">
+            <el-input
+              v-model="form.negativePrompt"
+              type="textarea"
+              :rows="2"
+              placeholder="不想出现的内容..."
+            />
+          </el-form-item>
+          <el-form-item label="分辨率">
+            <div class="resolution-inputs">
+              <el-input-number v-model="form.width" :min="256" :max="2048" :step="64" />
+              <span class="resolution-x">x</span>
+              <el-input-number v-model="form.height" :min="256" :max="2048" :step="64" />
+            </div>
+          </el-form-item>
+          <el-form-item label="时长(秒)">
+            <el-input-number v-model="form.durationSeconds" :min="1" :max="10" style="width: 100%" />
+            <div class="form-tip">视频时长，帧数 = {{ form.durationSeconds }} × 16 + 1 = {{ form.durationSeconds * 16 + 1 }} 帧</div>
+          </el-form-item>
+          <el-form-item label="采样步数">
+            <el-input-number v-model="form.steps" :min="1" :max="100" style="width: 100%" />
+            <div class="form-tip">推荐4步（使用4步蒸馏LoRA加速）</div>
+          </el-form-item>
+          <el-form-item label="随机种子">
+            <el-input-number v-model="form.seed" :min="-1" :max="999999999" style="width: 100%" />
+          </el-form-item>
+        </el-form>
+
         <!-- 文本转语音 -->
         <el-form v-else-if="config?.serviceType === 'text_to_speech'" :model="form" label-width="100px">
           <el-form-item label="TTS模式">
@@ -505,7 +578,8 @@ const form = reactive({
   negativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
   ttsMode: 'speech' as 'speech' | 'clone',
   referenceAudioUrl: '',
-  referenceText: ''
+  referenceText: '',
+  cameraPose: 'Zoom In'  // 镜头动作
 })
 
 // 帧数自动计算联动（帧数 = 秒数 * 16 + 1，Wan模型推荐）
@@ -526,17 +600,24 @@ const resetForm = () => {
   form.audioUrl = ''
   form.firstFrameUrl = ''
   form.lastFrameUrl = ''
-  form.width = 640
-  form.height = 640
+  form.width = 720  // 镜头控制默认720
+  form.height = 720  // 镜头控制默认720
   form.voice = ''
   form.steps = getDefaultSteps(props.config)
   form.seed = -1
-  form.durationSeconds = 9  // 默认9秒
-  form.frames = 144  // 9秒 * 16帧
+  // 镜头控制默认5秒（81帧），其他视频类型默认9秒
+  if (props.config?.serviceType === 'camera_control') {
+    form.durationSeconds = 5
+    form.frames = 81
+  } else {
+    form.durationSeconds = 9
+    form.frames = 144
+  }
   form.negativePrompt = '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走'
   form.ttsMode = 'speech'
   form.referenceAudioUrl = ''
   form.referenceText = ''
+  form.cameraPose = 'Zoom In'
 }
 
 /**
@@ -553,6 +634,7 @@ const WORKFLOW_DEFAULT_STEPS: Record<string, number> = {
   'flux': 20,      // Flux 模型
   'wan22_t2v': 4,  // Wan2.2 文生视频 (4步蒸馏版)
   'wan22_s2v': 4,  // Wan2.2 语音图片转视频
+  'wan22_camera': 4,  // Wan2.2 相机控制视频
   'wan': 4,        // Wan 其他视频模型 (默认4步)
 }
 
@@ -654,6 +736,13 @@ const handleTest = async () => {
     }
   }
 
+  if (props.config.serviceType === 'camera_control') {
+    if (!form.imageUrl) {
+      ElMessage.warning('请上传输入图片')
+      return
+    }
+  }
+
   if (props.config.serviceType === 'text_to_speech' && form.ttsMode === 'clone') {
     if (!form.referenceAudioUrl) {
       ElMessage.warning('请上传参考音频')
@@ -663,6 +752,15 @@ const handleTest = async () => {
 
   loading.value = true
   result.value = null
+
+  // 计算帧数：
+  // - video_frame(首尾帧)、camera_control(镜头控制): 秒 * 16 + 1
+  // - video(文生视频): 秒 * 16 (后端会自动 +16 补偿Wan模型少生成的帧)
+  // - sound_to_video(S2V): 后端固定用77帧，前端传值不影响
+  const needsPlusOne = ['video_frame', 'camera_control'].includes(props.config?.serviceType || '')
+  const calculatedFrames = needsPlusOne
+    ? form.durationSeconds * 16 + 1
+    : form.durationSeconds * 16
 
   try {
     const res = await aiConfigAPI.testGenerate(props.config.id, {
@@ -676,12 +774,13 @@ const handleTest = async () => {
       voice: form.voice,
       steps: form.steps,
       seed: form.seed,
-      duration: form.durationSeconds * 16 + 1, // 秒转帧，Wan模型需要 +1 帧
-      frames: form.durationSeconds * 16 + 1,   // 与显示给用户的帧数一致
+      duration: calculatedFrames,
+      frames: calculatedFrames,
       negativePrompt: form.negativePrompt,
       ttsMode: form.ttsMode,
       referenceAudioUrl: form.referenceAudioUrl,
-      referenceText: form.referenceText
+      referenceText: form.referenceText,
+      cameraPose: form.cameraPose  // 镜头动作
     })
     console.log('API Response:', res)
     console.log('imageUrl:', res.data?.imageUrl)

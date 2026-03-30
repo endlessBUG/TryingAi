@@ -92,4 +92,10 @@ public class TestGenerateRequest {
      * 参考文本
      */
     private String referenceText;
+
+    /**
+     * 相机镜头动作 (用于相机控制视频生成)
+     * 可选值: Zoom In, Zoom Out, Pan Left, Pan Right, Tilt Up, Tilt Down, Static, Rotate
+     */
+    private String cameraPose;
 }

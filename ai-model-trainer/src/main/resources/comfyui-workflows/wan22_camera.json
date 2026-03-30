@@ -1,0 +1,219 @@
+{
+  "71": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": {{SEED}},
+      "steps": {{STEPS}},
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": {{STEPS_HALF}},
+      "return_with_leftover_noise": "enable",
+      "model": ["76", 0],
+      "positive": ["80", 0],
+      "negative": ["80", 1],
+      "latent_image": ["80", 2]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "73": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "codec": "auto",
+      "video": ["83", 0]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "保存视频"
+    }
+  },
+  "74": {
+    "inputs": {
+      "text": "{{NEGATIVE_PROMPT}}",
+      "clip": ["85", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "76": {
+    "inputs": {
+      "shift": 8,
+      "model": ["88", 0]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "采样算法（SD3）"
+    }
+  },
+  "77": {
+    "inputs": {
+      "shift": 8,
+      "model": ["90", 0]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "采样算法（SD3）"
+    }
+  },
+  "78": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": {{STEPS}},
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": {{STEPS_HALF}},
+      "end_at_step": {{STEPS}},
+      "return_with_leftover_noise": "disable",
+      "model": ["77", 0],
+      "positive": ["80", 0],
+      "negative": ["80", 1],
+      "latent_image": ["71", 0]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "79": {
+    "inputs": {
+      "image": "{{IMAGE}}"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "80": {
+    "inputs": {
+      "width": ["87", 1],
+      "height": ["87", 2],
+      "length": ["87", 3],
+      "batch_size": 1,
+      "positive": ["81", 0],
+      "negative": ["74", 0],
+      "vae": ["86", 0],
+      "start_image": ["79", 0],
+      "camera_conditions": ["87", 0]
+    },
+    "class_type": "WanCameraImageToVideo",
+    "_meta": {
+      "title": "万相机图像转视频"
+    }
+  },
+  "81": {
+    "inputs": {
+      "text": "{{PROMPT}}",
+      "clip": ["85", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "82": {
+    "inputs": {
+      "samples": ["78", 0],
+      "vae": ["86", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "83": {
+    "inputs": {
+      "fps": 16,
+      "images": ["82", 0]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "创建视频"
+    }
+  },
+  "85": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "86": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "87": {
+    "inputs": {
+      "camera_pose": "{{CAMERA_POSE}}",
+      "width": {{WIDTH}},
+      "height": {{HEIGHT}},
+      "length": {{FRAMES}},
+      "speed": 1,
+      "fx": 0.5,
+      "fy": 0.5,
+      "cx": 0.5,
+      "cy": 0.5
+    },
+    "class_type": "WanCameraEmbedding",
+    "_meta": {
+      "title": "Wan相机嵌入"
+    }
+  },
+  "88": {
+    "inputs": {
+      "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+      "strength_model": 1,
+      "model": ["116", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "90": {
+    "inputs": {
+      "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+      "strength_model": 1,
+      "model": ["117", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "116": {
+    "inputs": {
+      "unet_name": "Wan2.2-Fun-A14B-Control-Camera-HighNoise-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "117": {
+    "inputs": {
+      "unet_name": "Wan2.2-Fun-A14B-Control-Camera-LowNoise-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  }
+}

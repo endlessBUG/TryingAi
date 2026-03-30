@@ -9,6 +9,7 @@ export type AIServiceType =
   | 'video'
   | 'video_frame'
   | 'sound_to_video'
+  | 'camera_control'
   | 'text_to_speech'
 
 /**
@@ -96,6 +97,7 @@ export interface TestGenerateRequest {
   ttsMode?: 'speech' | 'clone'
   referenceAudioUrl?: string
   referenceText?: string
+  cameraPose?: string  // 相机镜头动作
 }
 
 /**
@@ -125,6 +127,7 @@ export const SERVICE_TYPE_LABELS: Record<AIServiceType, string> = {
   video: '视频生成',
   video_frame: '首尾帧视频',
   sound_to_video: '语音图片转视频',
+  camera_control: '镜头控制',
   text_to_speech: '文本转语音'
 }
 
@@ -164,6 +167,9 @@ export const PROVIDER_CONFIGS: Record<AIServiceType, ProviderConfig[]> = {
   ],
   sound_to_video: [
     { id: 'comfyui', name: 'ComfyUI', models: ['wan2.2-s2v'] }
+  ],
+  camera_control: [
+    { id: 'comfyui', name: 'ComfyUI', models: ['wan2.2-camera'] }
   ],
   text_to_speech: [
     { id: 'fishaudio', name: 'FishAudio', models: ['s2-pro'] },
