@@ -2,8 +2,8 @@
   "3": {
     "inputs": {
       "seed": {{SEED}},
-      "steps": {{STEPS}},
-      "cfg": 1,
+      "steps": ["103", 0],
+      "cfg": ["105", 0],
       "sampler_name": "uni_pc",
       "scheduler": "simple",
       "denoise": 1,
@@ -12,28 +12,30 @@
       "negative": ["93", 1],
       "latent_image": ["93", 2]
     },
-    "class_type": "KSampler"
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
   },
   "6": {
     "inputs": {
       "text": "{{PROMPT}}",
       "clip": ["38", 0]
     },
-    "class_type": "CLIPTextEncode"
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
   },
   "7": {
     "inputs": {
       "text": "{{NEGATIVE_PROMPT}}",
       "clip": ["38", 0]
     },
-    "class_type": "CLIPTextEncode"
-  },
-  "37": {
-    "inputs": {
-      "unet_name": "wan2.2_s2v_14B_fp8_scaled.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader"
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
   },
   "38": {
     "inputs": {
@@ -41,66 +43,93 @@
       "type": "wan",
       "device": "default"
     },
-    "class_type": "CLIPLoader"
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
   },
   "39": {
     "inputs": {
       "vae_name": "wan_2.1_vae.safetensors"
     },
-    "class_type": "VAELoader"
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
   },
   "52": {
     "inputs": {
       "image": "{{IMAGE}}"
     },
-    "class_type": "LoadImage"
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
   },
   "54": {
     "inputs": {
       "shift": 8,
       "model": ["107", 0]
     },
-    "class_type": "ModelSamplingSD3"
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "采样算法（SD3）"
+    }
   },
   "56": {
     "inputs": {
       "audio_encoder": ["57", 0],
       "audio": ["58", 0]
     },
-    "class_type": "AudioEncoderEncode"
+    "class_type": "AudioEncoderEncode",
+    "_meta": {
+      "title": "音频编码器编码"
+    }
   },
   "57": {
     "inputs": {
       "audio_encoder_name": "wav2vec2_large_english_fp16.safetensors"
     },
-    "class_type": "AudioEncoderLoader"
+    "class_type": "AudioEncoderLoader",
+    "_meta": {
+      "title": "加载音频编码器"
+    }
   },
   "58": {
     "inputs": {
       "audio": "{{AUDIO}}"
     },
-    "class_type": "LoadAudio"
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
   },
   "80": {
     "inputs": {
-      "samples": ["3", 0],
+      "samples": ["95", 0],
       "vae": ["39", 0]
     },
-    "class_type": "VAEDecode"
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
   },
   "82": {
     "inputs": {
       "fps": 16,
-      "images": ["80", 0],
+      "images": ["96", 0],
       "audio": ["58", 0]
     },
-    "class_type": "CreateVideo"
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "创建视频"
+    }
   },
   "93": {
     "inputs": {
       "width": {{WIDTH}},
       "height": {{HEIGHT}},
-      "length": {{FRAMES}},
+      "length": ["104", 0],
       "batch_size": 1,
       "positive": ["6", 0],
       "negative": ["7", 0],
@@ -108,15 +137,91 @@
       "audio_encoder_output": ["56", 0],
       "ref_image": ["52", 0]
     },
-    "class_type": "WanSoundImageToVideo"
+    "class_type": "WanSoundImageToVideo",
+    "_meta": {
+      "title": "图像到视频（WanSound）"
+    }
+  },
+  "94": {
+    "inputs": {
+      "dim": "t",
+      "index": 0,
+      "amount": 1,
+      "samples": ["79:78", 0]
+    },
+    "class_type": "LatentCut",
+    "_meta": {
+      "title": "潜在空间切割"
+    }
+  },
+  "95": {
+    "inputs": {
+      "dim": "t",
+      "samples1": ["94", 0],
+      "samples2": ["79:78", 0]
+    },
+    "class_type": "LatentConcat",
+    "_meta": {
+      "title": "潜在空间拼接"
+    }
+  },
+  "96": {
+    "inputs": {
+      "batch_index": ["100", 0],
+      "length": 4096,
+      "image": ["80", 0]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "从批次获取图像"
+    }
+  },
+  "100": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Batch sizes"
+    }
+  },
+  "103": {
+    "inputs": {
+      "value": {{STEPS}}
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Steps"
+    }
+  },
+  "104": {
+    "inputs": {
+      "value": {{FRAMES}}
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Chunk Length"
+    }
+  },
+  "105": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "CFG"
+    }
   },
   "107": {
     "inputs": {
       "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
       "strength_model": 1,
-      "model": ["37", 0]
+      "model": ["198", 0]
     },
-    "class_type": "LoraLoaderModelOnly"
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
   },
   "113": {
     "inputs": {
@@ -125,6 +230,62 @@
       "codec": "auto",
       "video": ["82", 0]
     },
-    "class_type": "SaveVideo"
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "保存视频"
+    }
+  },
+  "198": {
+    "inputs": {
+      "unet_name": "Wan2.2-S2V-14B-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "79:78": {
+    "inputs": {
+      "dim": "t",
+      "samples1": ["3", 0],
+      "samples2": ["79:77", 0]
+    },
+    "class_type": "LatentConcat",
+    "_meta": {
+      "title": "潜在空间拼接"
+    }
+  },
+  "79:77": {
+    "inputs": {
+      "seed": 1,
+      "steps": ["103", 0],
+      "cfg": ["105", 0],
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["54", 0],
+      "positive": ["79:76", 0],
+      "negative": ["79:76", 1],
+      "latent_image": ["79:76", 2]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "79:76": {
+    "inputs": {
+      "length": ["104", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["39", 0],
+      "video_latent": ["3", 0],
+      "audio_encoder_output": ["56", 0],
+      "ref_image": ["52", 0]
+    },
+    "class_type": "WanSoundImageToVideoExtend",
+    "_meta": {
+      "title": "图像到视频扩展（WanSound）"
+    }
   }
 }

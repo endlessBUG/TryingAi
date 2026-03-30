@@ -27,7 +27,7 @@ public class OpenAIClient implements AIClient {
     private final ObjectMapper objectMapper;
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(300, TimeUnit.SECONDS)
+            .readTimeout(1800, TimeUnit.SECONDS)  // 30分钟超时
             .writeTimeout(60, TimeUnit.SECONDS)
             .addInterceptor(new LoggingInterceptor())
             .build();

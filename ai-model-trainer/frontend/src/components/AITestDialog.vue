@@ -61,7 +61,7 @@
         <el-form v-else-if="config?.serviceType === 'image_to_image'" :model="form" label-width="100px">
           <el-form-item label="输入图片" required>
             <el-upload
-              class="image-uploader"
+              class="image-uploader i2i-uploader"
               :show-file-list="false"
               :before-upload="handleImageUpload"
               accept="image/*"
@@ -69,6 +69,16 @@
               <img v-if="form.imageUrl" :src="form.imageUrl" class="uploaded-image" />
               <el-icon v-else class="upload-icon"><Plus /></el-icon>
             </el-upload>
+            <el-button
+              v-if="form.imageUrl"
+              type="primary"
+              link
+              size="small"
+              class="i2i-preview-btn"
+              @click.stop="openFullscreen('image', form.imageUrl)"
+            >
+              点击预览大图
+            </el-button>
           </el-form-item>
           <el-form-item label="提示词" required>
             <el-input
@@ -154,6 +164,16 @@
                 <img v-if="form.firstFrameUrl" :src="form.firstFrameUrl" class="uploaded-image" />
                 <el-icon v-else class="upload-icon"><Plus /></el-icon>
               </el-upload>
+              <el-button
+                v-if="form.firstFrameUrl"
+                type="primary"
+                link
+                size="small"
+                class="frame-preview-btn"
+                @click.stop="openFullscreen('image', form.firstFrameUrl)"
+              >
+                点击预览大图
+              </el-button>
             </div>
             <div class="frame-item">
               <div class="frame-label">尾帧图片 *</div>
@@ -166,6 +186,16 @@
                 <img v-if="form.lastFrameUrl" :src="form.lastFrameUrl" class="uploaded-image" />
                 <el-icon v-else class="upload-icon"><Plus /></el-icon>
               </el-upload>
+              <el-button
+                v-if="form.lastFrameUrl"
+                type="primary"
+                link
+                size="small"
+                class="frame-preview-btn"
+                @click.stop="openFullscreen('image', form.lastFrameUrl)"
+              >
+                点击预览大图
+              </el-button>
             </div>
           </div>
           <el-form-item label="提示词" required>
@@ -192,7 +222,12 @@
             </div>
           </el-form-item>
           <el-form-item label="时长(秒)">
-            <el-input-number v-model="form.durationSeconds" :min="1" :max="30" style="width: 100%" />
+            <el-input-number v-model="form.durationSeconds" :min="1" :max="10" style="width: 100%" />
+            <div class="form-tip">视频时长，帧数 = {{ form.durationSeconds }} × 16 + 1 = {{ form.durationSeconds * 16 + 1 }} 帧</div>
+          </el-form-item>
+          <el-form-item label="帧数">
+            <el-input-number v-model="form.frames" :min="16" :max="160" :step="16" style="width: 100%" disabled />
+            <div class="form-tip">自动计算：帧数 = 时长 × 16fps</div>
           </el-form-item>
           <el-form-item label="采样步数">
             <el-input-number v-model="form.steps" :min="1" :max="100" style="width: 100%" />
@@ -206,7 +241,7 @@
         <el-form v-else-if="config?.serviceType === 'sound_to_video'" :model="form" label-width="100px">
           <el-form-item label="输入图片" required>
             <el-upload
-              class="image-uploader"
+              class="image-uploader i2i-uploader"
               :show-file-list="false"
               :before-upload="handleImageUpload"
               accept="image/*"
@@ -214,6 +249,16 @@
               <img v-if="form.imageUrl" :src="form.imageUrl" class="uploaded-image" />
               <el-icon v-else class="upload-icon"><Plus /></el-icon>
             </el-upload>
+            <el-button
+              v-if="form.imageUrl"
+              type="primary"
+              link
+              size="small"
+              class="i2i-preview-btn"
+              @click.stop="openFullscreen('image', form.imageUrl)"
+            >
+              点击预览大图
+            </el-button>
           </el-form-item>
           <el-form-item label="输入音频" required>
             <el-upload
@@ -257,7 +302,7 @@
           </el-form-item>
           <el-form-item label="时长(秒)">
             <el-input-number v-model="form.durationSeconds" :min="1" :max="30" style="width: 100%" />
-            <div class="form-tip">视频时长，自动计算帧数</div>
+            <div class="form-tip">视频时长，每秒约16帧，当前 {{ form.durationSeconds }} 秒 ≈ {{ form.durationSeconds * 16 }} 帧</div>
           </el-form-item>
           <el-form-item label="采样步数">
             <el-input-number v-model="form.steps" :min="1" :max="100" style="width: 100%" />
@@ -453,13 +498,19 @@ const form = reactive({
   width: 640,
   height: 640,
   voice: '',
-  steps: 30,
+  steps: 4,  // 默认4步，resetForm会根据配置更新
   seed: -1,
-  durationSeconds: 5,
-  negativePrompt: '',
+  durationSeconds: 9,  // 默认9秒
+  frames: 144,  // 9秒 * 16帧
+  negativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
   ttsMode: 'speech' as 'speech' | 'clone',
   referenceAudioUrl: '',
   referenceText: ''
+})
+
+// 帧数自动计算联动（帧数 = 秒数 * 16 + 1，Wan模型推荐）
+watch(() => form.durationSeconds, (val) => {
+  form.frames = val * 16 + 1
 })
 
 watch(() => props.modelValue, (val) => {
@@ -480,8 +531,9 @@ const resetForm = () => {
   form.voice = ''
   form.steps = getDefaultSteps(props.config)
   form.seed = -1
-  form.durationSeconds = 5
-  form.negativePrompt = ''
+  form.durationSeconds = 9  // 默认9秒
+  form.frames = 144  // 9秒 * 16帧
+  form.negativePrompt = '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走'
   form.ttsMode = 'speech'
   form.referenceAudioUrl = ''
   form.referenceText = ''
@@ -500,22 +552,26 @@ const WORKFLOW_DEFAULT_STEPS: Record<string, number> = {
   'sdxl': 20,      // SDXL 标准模型
   'flux': 20,      // Flux 模型
   'wan22_t2v': 4,  // Wan2.2 文生视频 (4步蒸馏版)
-  'wan': 30,       // Wan 其他视频模型
+  'wan22_s2v': 4,  // Wan2.2 语音图片转视频
+  'wan': 4,        // Wan 其他视频模型 (默认4步)
 }
 
 /**
  * 根据配置获取默认步数
  */
 const getDefaultSteps = (config: AIConfig | null): number => {
-  if (!config?.settings) return 30
+  if (!config?.settings) return 4  // 默认4步
 
   try {
     const parsed = JSON.parse(config.settings)
     const filename = (parsed.workflow_filename || '').toLowerCase()
 
+    console.log('workflow_filename:', filename)  // 调试日志
+
     // 匹配工作流关键字
     for (const [keyword, steps] of Object.entries(WORKFLOW_DEFAULT_STEPS)) {
       if (filename.includes(keyword)) {
+        console.log('matched keyword:', keyword, '-> steps:', steps)  // 调试日志
         return steps
       }
     }
@@ -523,7 +579,7 @@ const getDefaultSteps = (config: AIConfig | null): number => {
     // ignore
   }
 
-  return 30
+  return 4  // 默认4步
 }
 
 const handleImageUpload = (file: File) => {
@@ -620,8 +676,8 @@ const handleTest = async () => {
       voice: form.voice,
       steps: form.steps,
       seed: form.seed,
-      duration: form.durationSeconds * 16, // 秒转帧
-      frames: form.durationSeconds * 16,
+      duration: form.durationSeconds * 16 + 1, // 秒转帧，Wan模型需要 +1 帧
+      frames: form.durationSeconds * 16 + 1,   // 与显示给用户的帧数一致
       negativePrompt: form.negativePrompt,
       ttsMode: form.ttsMode,
       referenceAudioUrl: form.referenceAudioUrl,
@@ -695,6 +751,8 @@ const handleClose = () => {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  overflow: auto;
+  min-height: 300px;
 }
 
 .preview-empty,
@@ -726,17 +784,33 @@ const handleClose = () => {
   word-break: break-word;
 }
 
-.preview-image img,
-.preview-video video {
-  max-width: 100%;
-  max-height: 350px;
-  border-radius: 6px;
-}
-
 .preview-image,
 .preview-video {
   cursor: pointer;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.preview-image img {
+  max-width: 100%;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.preview-video video {
+  max-width: 100%;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 .preview-image:hover .fullscreen-hint,
@@ -763,12 +837,24 @@ const handleClose = () => {
   align-items: center;
   justify-content: center;
   min-height: 60vh;
+  overflow: auto;
 }
 
-.fullscreen-content img,
+.fullscreen-content img {
+  max-width: 100%;
+  max-height: 85vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
 .fullscreen-content video {
   max-width: 100%;
-  max-height: 80vh;
+  max-height: 85vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: 8px;
 }
 
@@ -788,6 +874,27 @@ const handleClose = () => {
   justify-content: center;
   cursor: pointer;
   overflow: hidden;
+  background: #fafafa;
+}
+
+.image-uploader.i2i-uploader {
+  width: 100%;
+  max-width: 360px;
+  min-height: 200px;
+  height: auto;
+  aspect-ratio: auto;
+}
+
+.image-uploader.i2i-uploader .uploaded-image {
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+.i2i-preview-btn {
+  display: block;
+  margin: 8px 0 0 0;
 }
 
 .image-uploader:hover {
@@ -797,7 +904,8 @@ const handleClose = () => {
 .uploaded-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #f5f7fa;
 }
 
 .upload-icon {
@@ -857,7 +965,21 @@ const handleClose = () => {
 
 .image-uploader.frame {
   width: 100%;
-  height: 150px;
+  min-height: 180px;
+  height: auto;
+  background: #fafafa;
+}
+
+.image-uploader.frame .uploaded-image {
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  object-fit: contain;
+}
+
+.frame-preview-btn {
+  display: block;
+  margin: 8px auto 0;
 }
 
 .resolution-inputs {

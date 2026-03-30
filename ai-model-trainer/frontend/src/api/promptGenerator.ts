@@ -29,8 +29,8 @@ export function testPromptGenerator(id: string, file?: File): Promise<ApiRespons
       method: 'post',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 60000
+      timeout: 1800000
     })
   }
-  return request({ url: `/prompt-generators/${id}/test`, method: 'post', timeout: 60000 })
+  return request({ url: `/prompt-generators/${id}/test`, method: 'post', timeout: 1800000 })
 }

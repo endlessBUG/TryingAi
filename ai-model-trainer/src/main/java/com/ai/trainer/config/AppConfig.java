@@ -39,7 +39,7 @@ public class AppConfig {
     public RestTemplate restTemplate(RestTemplateBuilder builder) {
         return builder
                 .setConnectTimeout(Duration.ofSeconds(30))
-                .setReadTimeout(Duration.ofSeconds(120))
+                .setReadTimeout(Duration.ofSeconds(1800))  // 30分钟超时
                 .build();
     }
 

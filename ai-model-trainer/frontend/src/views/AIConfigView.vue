@@ -100,7 +100,7 @@
 
         <el-form-item label="生成端点" prop="endpoint">
           <el-input v-model="form.endpoint" placeholder="可选，留空自动推断" />
-          <div class="form-tip">生成请求的 API 端点路径，如 /chat/completions</div>
+          <div class="form-tip">生成请求的 API 端点路径，如 /chat/completions、/api/prompt</div>
         </el-form-item>
 
         <el-form-item label="API Key" prop="apiKey">
@@ -246,7 +246,7 @@ const fullEndpointExample = computed(() => {
 
   let endpoint = ''
   if (provider === 'comfyui') {
-    endpoint = '/prompt'
+    endpoint = '/api/prompt'
   } else if (provider === 'gemini') {
     endpoint = '/v1beta/models/{model}:generateContent'
   } else if (serviceType === 'text') {
@@ -286,7 +286,7 @@ const handleProviderChange = () => {
   // 设置默认URL和端点
   if (form.provider === 'comfyui') {
     form.baseUrl = 'http://127.0.0.1:8188'
-    form.endpoint = '/prompt'
+    form.endpoint = '/api/prompt'
   } else if (form.provider === 'gemini') {
     form.baseUrl = 'https://api.chatfire.site'
     form.endpoint = ''

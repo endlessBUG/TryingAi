@@ -599,15 +599,19 @@ enable_autostart() {
 [Unit]
 Description=Fish Audio TTS API Service
 After=network.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=$CODE_DIR
 Environment=PATH=$(dirname "$ENV_PYTHON"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=CUDA_VISIBLE_DEVICES=0
 ExecStart=$ENV_PYTHON $CODE_DIR/tools/api_server.py --listen $API_HOST:$API_PORT --llama-checkpoint-path $MODEL_FILES_DIR --decoder-checkpoint-path $MODEL_FILES_DIR/codec.pth
-Restart=on-failure
+Restart=always
 RestartSec=15
+TimeoutStartSec=300
+TimeoutStopSec=30
 StandardOutput=append:$LOG_FILE
 StandardError=append:$LOG_FILE
 
@@ -617,18 +621,45 @@ EOF
 
     systemctl daemon-reload
     systemctl enable fish-audio.service
-    info "开机自启已启用"
-    info "  手动控制: systemctl start/stop/status fish-audio"
+    info "✅ 开机自启已启用"
+    info ""
+    info "服务管理命令:"
+    info "  启动服务: systemctl start fish-audio"
+    info "  停止服务: systemctl stop fish-audio"
+    info "  查看状态: systemctl status fish-audio"
+    info "  查看日志: journalctl -u fish-audio -f"
 }
 
 disable_autostart() {
-    if systemctl is-enabled fish-audio.service &>/dev/null; then
-        systemctl disable fish-audio.service
+    if [ -f "/etc/systemd/system/fish-audio.service" ]; then
+        systemctl stop fish-audio.service 2>/dev/null || true
+        systemctl disable fish-audio.service 2>/dev/null || true
         rm -f /etc/systemd/system/fish-audio.service
         systemctl daemon-reload
-        info "开机自启已禁用"
+        info "✅ 开机自启已禁用"
     else
         warn "未找到 fish-audio systemd 服务"
+    fi
+}
+
+# 交互式询问是否启用开机自启
+ask_autostart() {
+    echo ""
+    read -p "是否启用开机自启? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        enable_autostart
+        echo ""
+        read -p "是否立即启动服务? [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            systemctl start fish-audio
+            sleep 3
+            systemctl status fish-audio --no-pager || true
+        fi
+    else
+        info "跳过开机自启设置"
+        info "稍后可通过以下命令启用: $0 enable-autostart"
     fi
 }
 
@@ -694,6 +725,12 @@ case "${1:-}" in
         install_dependencies
         info "安装完成！"
         info "下一步: $0 download-model"
+        # 如果是 root 用户，询问是否启用开机自启
+        if [ "$EUID" -eq 0 ]; then
+            ask_autostart
+        else
+            info "提示: 使用 root 权限运行可启用开机自启: sudo $0 enable-autostart"
+        fi
         ;;
     install-deps)
         install_system_deps
